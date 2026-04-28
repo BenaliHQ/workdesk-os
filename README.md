@@ -101,9 +101,27 @@ Six meta-skills cover everything you'll add over time. Each scaffolds a declarat
 - **Sparse-data daily-plan** — useful output even with no calendar, no transcripts, three manual notes.
 - **Hook fallbacks** — `/workdesk-doctor` chooses `SessionEnd` (preferred) or `Stop` (upserted, one file per session_id) for raw transcript export.
 
+## Vendored components
+
+WorkDesk OS bundles seven Obsidian plugins under [`vendor/plugins/`](vendor/plugins/). Each plugin's release artifacts (`main.js`, `manifest.json`, `styles.css` where present) are vendored at a pinned upstream tag, with SHA256s recorded in `vendor/plugins/<id>/UPSTREAM.md` and verified by `init.sh` at install time. Each plugin's upstream `LICENSE` is preserved alongside the artifacts.
+
+| Plugin | Upstream | Tag | License |
+|---|---|---|---|
+| Templater (`templater-obsidian`) | [SilentVoid13/Templater](https://github.com/SilentVoid13/Templater) | `2.19.3` | AGPL-3.0 |
+| Minimal Theme Settings (`obsidian-minimal-settings`) | [kepano/obsidian-minimal-settings](https://github.com/kepano/obsidian-minimal-settings) | `8.2.2` | MIT |
+| Custom File Explorer Sorting (`custom-sort`) | [SebastianMC/obsidian-custom-sort](https://github.com/SebastianMC/obsidian-custom-sort) | `3.1.6` | GPL-3.0 |
+| Calendar (`calendar`) | [liamcain/obsidian-calendar-plugin](https://github.com/liamcain/obsidian-calendar-plugin) | `1.5.10` | MIT |
+| Periodic Notes (`periodic-notes`) | [liamcain/obsidian-periodic-notes](https://github.com/liamcain/obsidian-periodic-notes) | `0.0.17` | MIT |
+| BRAT (`obsidian42-brat`) | [TfTHacker/obsidian42-brat](https://github.com/TfTHacker/obsidian42-brat) | `2.0.4` | MIT |
+| WorkDesk Terminal (`workdesk-terminal`) | [BenaliHQ/workdesk-terminal](https://github.com/BenaliHQ/workdesk-terminal) (metadata-only fork of `internetvin/internetvin-terminal`) | `v1.1.2` | MIT |
+
+Updates to the five upstream community plugins flow through `scripts/refresh-vendored-plugins.sh` plus a workdesk-os release. Updates to `workdesk-terminal` flow through BRAT — operators get the new release on next Obsidian launch with no re-install needed.
+
 ## License
 
 MIT. Fork it, ship it, make it yours.
+
+Each vendored plugin retains its own license. See `vendor/plugins/<id>/LICENSE` and `vendor/plugins/<id>/UPSTREAM.md`.
 
 ## Source
 
