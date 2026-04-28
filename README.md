@@ -78,6 +78,8 @@ Then:
 
 The `_workdesk/` directory is the visible source of truth. Claude Code reads through `.claude/` (a symlink) for tool compatibility.
 
+Bootstrap also creates `_workdesk/defaults/` — a frozen snapshot of the V1 control plane as it shipped. Treat it as read-only. When V2 lands a `/migrate` skill, it 3-way merges `defaults/` (what shipped), `_workdesk/` (what you have now), and the V2 source — keeping your edits, applying V2 changes to untouched files, and flagging conflicts. Editing `defaults/` defeats the merge.
+
 ## Extending
 
 Six meta-skills cover everything you'll add over time. Each scaffolds a declaration and creates the corresponding vault folder when needed. Each carries a **detection clause** — a deterministic rule for when Claude should propose creating something, not just when you ask.

@@ -188,6 +188,20 @@ mkdir -p "$TARGET/_workdesk"
 rsync -a "$SOURCE_WD/" "$TARGET/_workdesk/"
 
 # Snapshot the V1 baseline so V2 update can 3-way merge.
+#
+# _workdesk/defaults/ is a frozen copy of the V1 control plane as it
+# existed at install time. The user's own _workdesk/ may drift over
+# time (custom rules, edited skills, new declarations). When V2 ships
+# a /migrate skill, it diffs three trees:
+#
+#   defaults/   — what shipped (this snapshot, never edited)
+#   _workdesk/  — what the user has now (their working copy)
+#   v2 source   — what V2 ships
+#
+# The 3-way merge keeps user edits, applies V2 changes to untouched
+# files, and surfaces conflicts where both diverged from defaults/.
+# Excludes: defaults itself (no recursive snapshot), snapshots/ and
+# state/ (mutable runtime, not part of the V1 contract).
 mkdir -p "$TARGET/_workdesk/defaults"
 rsync -a --delete \
   --exclude=defaults \
