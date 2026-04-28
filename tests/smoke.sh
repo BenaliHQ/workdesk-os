@@ -42,20 +42,27 @@ done
 /usr/bin/plutil -extract hooks raw -o - "$vault/_workdesk/settings.json" >/dev/null
 
 printf '== personal lock direct probe ==\n'
+# This repo's lock uses the JSON permissionDecision contract: always exits 0,
+# emits {"hookSpecificOutput":{"permissionDecision":"deny",...}} on stdout.
 lock_json='{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"'"$vault"'","tool_input":{"command":"touch personal/daily/x.md"}}'
-set +e
 printf '%s' "$lock_json" | "$vault/_workdesk/scripts/pre-tool-use-personal-lock.sh" \
   >/tmp/workdesk-smoke-lock.out 2>/tmp/workdesk-smoke-lock.err
-lock_exit=$?
-set -e
-if [[ "$lock_exit" -eq 0 ]]; then
-  printf 'expected personal lock to block Bash mutation\n' >&2
+/usr/bin/grep -q '"permissionDecision":"deny"' /tmp/workdesk-smoke-lock.out || {
+  printf 'expected personal lock to deny Bash mutation; got: %s\n' "$(cat /tmp/workdesk-smoke-lock.out)" >&2
+  exit 1
+}
+
+# Read-only Bash on personal/ should be allowed (no deny output).
+read_json='{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"'"$vault"'","tool_input":{"command":"ls personal/"}}'
+printf '%s' "$read_json" | "$vault/_workdesk/scripts/pre-tool-use-personal-lock.sh" \
+  >/tmp/workdesk-smoke-lock-read.out 2>/dev/null
+if /usr/bin/grep -q '"permissionDecision":"deny"' /tmp/workdesk-smoke-lock-read.out; then
+  printf 'read-only Bash on personal/ should not be denied\n' >&2
   exit 1
 fi
-[[ "$lock_exit" -eq 2 ]] || { printf 'personal lock returned exit %d (expected 2)\n' "$lock_exit" >&2; exit 1; }
 
 printf '== event log direct probe ==\n'
-event_json='{"hook_event_name":"PostToolUse","tool_name":"Write","cwd":"'"$vault"'","tool_input":{"file_path":"atlas/people/jane-doe.md"}}'
+event_json='{"hook_event_name":"PostToolUse","tool_name":"Write","cwd":"'"$vault"'","tool_input":{"file_path":"'"$vault"'/atlas/people/jane-doe.md"}}'
 printf '%s' "$event_json" | "$vault/_workdesk/scripts/post-tool-use-log.sh"
 events_file="$vault/system/events/$(date +%Y-%m).md"
 [[ -f "$events_file" ]] || { printf 'event log file missing: %s\n' "$events_file" >&2; exit 1; }
@@ -71,6 +78,6 @@ if [[ "$dirty_exit" -eq 0 ]]; then
   printf 'dirty vault bootstrap should have failed\n' >&2
   exit 1
 fi
-/usr/bin/grep -q 'only supports fresh installs' /tmp/workdesk-smoke-dirty.err
+/usr/bin/grep -q 'only supports fresh installs' /tmp/workdesk-smoke-dirty.out /tmp/workdesk-smoke-dirty.err
 
 printf 'smoke passed\n'
