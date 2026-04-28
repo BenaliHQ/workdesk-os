@@ -53,7 +53,7 @@ Decide which raw session-log path is active. Procedure:
 
 ### 5. Hook latency
 
-Run `_workdesk/scripts/bench-hooks.sh`. Verify p95 < 50ms. Record the result.
+Run `_workdesk/scripts/bench-hooks.sh`. Record p95 and the budget check. If p95 exceeds the 50ms budget, record it as a warning — do NOT fail the overall doctor run. Hook latency is a perf signal, not a correctness invariant; cold-cache first runs can exceed the budget without any user-visible problem.
 
 ### 6. Session-entry intake scan
 
