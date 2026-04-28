@@ -44,6 +44,14 @@ cd workdesk-os
 
 The vault must be empty (`.obsidian/`, `.git/`, `.DS_Store`, `.gitignore`, and a single empty `README.md` are tolerated). V1 refuses to install over existing content; V2 ships a `/migrate` skill.
 
+Preview without installing:
+
+```bash
+./bootstrap.sh --dry-run /path/to/empty-vault
+```
+
+Runs preflight (macOS check, dependency check, empty-vault check) and prints the install plan without writing anything.
+
 ## First session
 
 ```bash

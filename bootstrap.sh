@@ -7,8 +7,15 @@
 #
 # Usage:
 #   ./bootstrap.sh /path/to/empty-vault
+#   ./bootstrap.sh --dry-run /path/to/empty-vault
 
 set -euo pipefail
+
+DRY_RUN=0
+if [[ "${1:-}" == "--dry-run" ]]; then
+  DRY_RUN=1
+  shift
+fi
 
 # ============================================================================
 # helpers
@@ -54,8 +61,12 @@ step "Verifying target vault is empty"
 note "Target: $TARGET"
 
 if [[ ! -d "$TARGET" ]]; then
-  note "Target does not exist — creating."
-  mkdir -p "$TARGET" || fail "could not create $TARGET"
+  if (( DRY_RUN )); then
+    note "Target does not exist — would create."
+  else
+    note "Target does not exist — creating."
+    mkdir -p "$TARGET" || fail "could not create $TARGET"
+  fi
 fi
 
 # Allow-list: .obsidian/, .DS_Store, .git/, .gitignore, single empty README.md
@@ -111,6 +122,25 @@ else
 fi
 
 note "All required tools present."
+
+# ============================================================================
+# Dry-run exit: preflight passed, preview the install and stop.
+# ============================================================================
+
+if (( DRY_RUN )); then
+  step "Dry run — would install:"
+  note "Five-zone skeleton: personal/ atlas/ gtd/ intel/ system/"
+  note "_workdesk/ control plane (skills, rules, declarations, scripts)"
+  note "_workdesk/defaults/ V1 baseline snapshot (for V2 3-way merge)"
+  note ".claude → _workdesk/ symlink"
+  note "gtd/inbox/$(date '+%Y-%m-%d')-welcome.md"
+  note "system/events/$(date '+%Y-%m').md (bootstrap-install-completed)"
+  note "_workdesk/state/signals.json (vault-improvements suppressed 14 days)"
+  echo ""
+  echo "    $(c_green "✓") Dry run complete — no changes made."
+  echo "    Re-run without --dry-run to install."
+  exit 0
+fi
 
 # ============================================================================
 # 4. create five-zone folder skeleton
