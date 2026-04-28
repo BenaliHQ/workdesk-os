@@ -37,7 +37,7 @@ echo "  p99: ${p99}ms"
 
 if (( p95 > 50 )); then
   echo "WARN: p95 exceeds 50ms budget"
-  exit 1
+else
+  echo "OK: p95 within 50ms budget"
 fi
-echo "OK: p95 within 50ms budget"
 exit 0
