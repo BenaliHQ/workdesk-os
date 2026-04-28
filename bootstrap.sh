@@ -109,7 +109,7 @@ step "Verifying macOS-provided runtime dependencies"
 
 required=(
   /bin/bash /usr/bin/plutil /usr/bin/stat /bin/mkdir /bin/ln /bin/chmod
-  /usr/bin/find /usr/bin/sed /usr/bin/awk
+  /usr/bin/find /usr/bin/sed /usr/bin/awk /usr/bin/python3
 )
 for t in "${required[@]}"; do
   [[ -x "$t" ]] || fail "missing required tool: $t"
@@ -296,9 +296,49 @@ check_exec() { [[ -x "$1" ]] || { warn "not executable: $1"; errs=$((errs+1)); }
 # Required directories
 for d in personal atlas gtd intel system _workdesk; do check_dir "$TARGET/$d"; done
 
-# settings.json valid JSON
+# settings.json valid JSON + hook schema (shape and command paths)
 if ! /usr/bin/plutil -convert json -o /dev/null "$TARGET/_workdesk/settings.json" 2>/dev/null; then
   warn "_workdesk/settings.json is not valid JSON"; errs=$((errs+1))
+else
+  schema_errs=$(TARGET="$TARGET" /usr/bin/python3 - <<'PY'
+import json, os, sys
+target = os.environ["TARGET"]
+path = f"{target}/_workdesk/settings.json"
+with open(path) as f:
+    cfg = json.load(f)
+errs = []
+hooks = cfg.get("hooks")
+if not isinstance(hooks, dict):
+    errs.append('"hooks" must be an object')
+else:
+    for event, entries in hooks.items():
+        if not isinstance(entries, list):
+            errs.append(f'hooks.{event}: must be an array'); continue
+        for i, entry in enumerate(entries):
+            inner = entry.get("hooks") if isinstance(entry, dict) else None
+            if not isinstance(inner, list):
+                errs.append(f'hooks.{event}[{i}].hooks: must be an array'); continue
+            for j, h in enumerate(inner):
+                if not isinstance(h, dict):
+                    errs.append(f'hooks.{event}[{i}].hooks[{j}]: must be an object'); continue
+                if h.get("type") != "command":
+                    errs.append(f'hooks.{event}[{i}].hooks[{j}].type: must be "command"')
+                cmd = h.get("command", "")
+                if not isinstance(cmd, str) or not cmd:
+                    errs.append(f'hooks.{event}[{i}].hooks[{j}].command: must be a non-empty string'); continue
+                resolved = cmd.replace("$CLAUDE_PROJECT_DIR", target).split()[0]
+                if not os.path.isfile(resolved):
+                    errs.append(f'hooks.{event}[{i}]: command not found: {resolved}')
+                elif not os.access(resolved, os.X_OK):
+                    errs.append(f'hooks.{event}[{i}]: command not executable: {resolved}')
+for e in errs:
+    print(e)
+PY
+  )
+  if [[ -n "$schema_errs" ]]; then
+    while IFS= read -r line; do warn "settings.json: $line"; done <<<"$schema_errs"
+    errs=$((errs+1))
+  fi
 fi
 
 # Hook scripts executable
