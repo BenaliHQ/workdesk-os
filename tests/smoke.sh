@@ -17,6 +17,13 @@ mkdir -p "$vault" "$dirty"
 
 printf 'existing content\n' > "$dirty/existing.md"
 
+printf '== dry-run on empty vault ==\n'
+dry_target="$test_root/dry-target"
+"$repo_root/bootstrap.sh" --dry-run "$dry_target" >/tmp/workdesk-smoke-dryrun.out
+/usr/bin/grep -q 'Dry run complete' /tmp/workdesk-smoke-dryrun.out || {
+  printf 'dry-run did not print completion banner\n' >&2; exit 1; }
+[[ -e "$dry_target" ]] && { printf 'dry-run created the target dir\n' >&2; exit 1; }
+
 printf '== bootstrap fresh vault ==\n'
 "$repo_root/bootstrap.sh" "$vault" >/tmp/workdesk-smoke-bootstrap.out
 
@@ -79,5 +86,16 @@ if [[ "$dirty_exit" -eq 0 ]]; then
   exit 1
 fi
 /usr/bin/grep -q 'only supports fresh installs' /tmp/workdesk-smoke-dirty.out /tmp/workdesk-smoke-dirty.err
+
+printf '== json-get extracts known field ==\n'
+got=$(printf '{"tool_name":"Write","tool_input":{"file_path":"/tmp/x.md"}}' \
+  | "$vault/_workdesk/scripts/json-get.sh" tool_name)
+[[ "$got" == "Write" ]] || { printf 'json-get returned %q (expected Write)\n' "$got" >&2; exit 1; }
+
+printf '== bench-hooks runs and exits 0 ==\n'
+# Latency budget violations are a warning, not a failure (per doctor SKILL.md
+# Phase 5). The bench script must always exit 0 so the doctor stays pass.
+CLAUDE_PROJECT_DIR="$vault" "$vault/_workdesk/scripts/bench-hooks.sh" \
+  >/tmp/workdesk-smoke-bench.out
 
 printf 'smoke passed\n'
