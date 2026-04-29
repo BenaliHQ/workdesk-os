@@ -7,6 +7,26 @@ description: Six-phase guided orientation for a freshly bootstrapped vault. Capt
 
 V1 onboarding is six phases, each writing results as it goes. If interrupted, partial work is preserved and resuming picks up at the first non-`complete` phase. Self-sufficient — videos optional.
 
+## Style — pacing and tone
+
+This is a guided conversation, not a form. Hard rules:
+
+- **One question per turn.** Ask one thing, wait for the answer, then ask the next. Never stack two questions in one message.
+- **Snappy.** Short sentences. Plain words. No bureaucratic preambles ("I need your input here", "Question 1 —", baseline status dumps).
+- **Frame each phase in one line before the first question.** Not three paragraphs. One line. Then the question.
+- **Back-and-forth pace.** Treat it like a chat with someone next to you, not a wizard form.
+- **Do not pre-fill answers from external context.** If you can see the operator's name or context from `~/.claude/CLAUDE.md`, an env var, the vault path, or anywhere else outside the onboarding flow itself — ignore it for the purpose of asking. Ask the question fresh. Operators will tell you if they want to short-circuit ("yeah, that's me"). Inferring up front feels presumptuous and breaks trust on the first interaction.
+- **No baseline-state dumps before questions.** Don't list what's already in `atlas/` or what doctor returned before asking the next question. The operator doesn't need a status report; they need the next step.
+- **Explain just-in-time.** When a phase introduces a new concept (engagement, area, signal, source), give a one-sentence explanation right before the first question that depends on it. Not a glossary up front.
+
+### Opener
+
+The very first message of a fresh `/onboarding` session is a single short paragraph:
+
+> *"Let's get your WorkDesk set up. Six quick phases — environment check, your role, your contexts, optional tools, your first daily plan, then we're done. I'll walk you through one step at a time. Ready?"*
+
+Wait for the operator to say go (or anything affirmative). Then start Phase 1. If they decline, say "Run `/onboarding` whenever you're ready" and stop.
+
 ## Sub-commands
 
 - `/onboarding` — resume from incomplete phase, or run full flow first time
@@ -34,38 +54,71 @@ Mark phase `complete` in `_workdesk/onboarding-state.md`.
 
 ### 2. Role map
 
-Capture mixed-persona profile.
+Frame in one line, then ask one question at a time. Two questions in this phase: name, then role mix. Do not ask both at once.
 
-> *"Which of these describe how you spend your time? Pick one or more — order matters for daily-plan tonality."*
+**Frame:**
 
-Options: `consultant`, `founder`, `employee`, `researcher`, `creative`, `parent`, `personal`.
+> *"Phase 2: I'll learn a little about how you work so the daily plan feels right."*
 
-Write `_workdesk/operator-profile.md` `role-mix:` and `name:` (also ask for name). No JTBD interview yet.
+**Q1 — name:**
+
+> *"What name should I use in your daily plans and briefings?"*
+
+Wait for answer. Do not proceed until you have a name. Do not pull a name from `~/.claude/CLAUDE.md`, vault path, git config, or anywhere else.
+
+**Q2 — role mix.** Once you have the name, send a separate message:
+
+> *"How do you mostly spend your time? Pick one or more, and put them in order — the first one shapes the tone of your daily plan."*
+>
+> *"Options: consultant, founder, employee, researcher, creative, parent, personal."*
+
+Wait for answer. If the operator gives a single role, accept it. If they list several, accept the order they gave.
+
+**Confirm and write:**
+
+> *"Got it — [name], [role-mix]. Saving that now."*
+
+Write `_workdesk/operator-profile.md` with `name:` and `role-mix:`. No JTBD interview yet.
 
 Mark phase `complete`.
 
 ### 3. Context setup
 
-Always: create `atlas/areas/` instances based on the role mix. Examples by role:
-- consultant → `atlas/areas/finance/`, `atlas/areas/pipeline/`, `atlas/areas/health/`
-- founder → `atlas/areas/hiring/`, `atlas/areas/runway/`, `atlas/areas/ops/`
-- employee → `atlas/areas/role/`, `atlas/areas/career/`
-- researcher → `atlas/areas/methods/`, `atlas/areas/teaching/`
-- creative → `atlas/areas/studio/`, `atlas/areas/audience/`
-- parent → `atlas/areas/household/`, `atlas/areas/family/`, `atlas/areas/health/`
+Two ideas in this phase: **areas** (ongoing parts of life/work) and **engagements** (specific people/orgs/clients you work with). Explain one at a time, just before asking. Do not dump both glossaries up front.
 
-Ask: *"Want to scaffold these areas? You can skip any."* Operator confirms or skips per item.
+**Frame:**
 
-Optional engagement containers per role mix (per the role-map prompt table in the plan):
+> *"Phase 3: let's set up your contexts — the things you'll come back to over and over."*
+
+**Sub-step 3a — areas.** Send a message that explains "area" in one sentence, then asks once:
+
+> *"An **area** is an ongoing part of your life or work that doesn't end — like finance, health, or your team. Based on your role mix I'd suggest these starter areas: [list 2–3 from the role-mix table below]. Want me to scaffold them? You can drop any you don't want, or add others."*
+
+Role → suggested areas:
+- consultant → `finance`, `pipeline`, `health`
+- founder → `hiring`, `runway`, `ops`
+- employee → `role`, `career`
+- researcher → `methods`, `teaching`
+- creative → `studio`, `audience`
+- parent → `household`, `family`, `health`
+- personal → no defaults; ask what areas matter to them
+
+Wait for the operator to confirm/edit the list. Scaffold only what they confirm at `atlas/areas/<name>/_brief.md` with the 4-item structure.
+
+**Sub-step 3b — engagements.** Once areas are done, send a separate message:
+
+> *"An **engagement** is a specific relationship — a client, a business you run, a team you're part of. Different from areas: engagements have a shape (people, meetings, history). Based on your role mix you'd typically use [container, e.g. `atlas/clients/` for consultants]. Want to set this up now? You can also skip and add later."*
+
+Role → suggested container:
 - consultant → `atlas/clients/`
 - founder → `atlas/businesses/`
 - employee → `atlas/teams/` or `atlas/departments/`
 - researcher → `atlas/labs/` or `atlas/collaborations/`
 - creative → `atlas/disciplines/` (or user-named)
 
-Operator picks zero or more. For each chosen container, ask for one initial instance name to seed (or skip seeding).
+If they skip, mark and move on. If they want to set it up, ask for **one** starter instance name (not a list — one). Scaffold that one. If they want more after, they can do another now or do it later.
 
-Each new `_brief.md` uses the 4-item structure (areas/engagements) or 8-item (initiatives — not created here). Frontmatter sets `expected-cadence` defaults, `last-touched` to today.
+Each new `_brief.md` uses the 4-item structure. Frontmatter sets `expected-cadence` defaults, `last-touched` to today.
 
 Update `operator-profile.md` `primary-contexts.engagements` and `primary-contexts.areas` with canonical `_brief.md` wikilinks.
 
@@ -87,10 +140,13 @@ Mark phase `complete`.
 
 ### 5. First daily plan
 
-Generate `intel/briefings/daily/{today}-daily-plan.md` from whatever data exists:
-- **Rich data** path: full plan via daily-plan signal anchors
-- **Sparse data** path: 7-step fallback chain
-- **Cold start** path: setup-oriented plan ("Nothing scheduled. First steps: …")
+**Do not invoke `/daily-ops` or `/weekly-review`.** Onboarding produces a minimal first-day plan inline. The full daily-plan signal pipeline is a post-onboarding skill the operator runs themselves tomorrow morning.
+
+**Frame:**
+
+> *"Phase 5: I'll drop a simple plan in `intel/briefings/daily/` so you can see where they live. Tomorrow you'll run `/daily-ops morning` to get the real one."*
+
+Write `intel/briefings/daily/{today}-daily-plan.md` as a short cold-start-style plan: a single section "Getting started with WorkDesk" listing the 2–3 most useful next actions for a fresh vault (e.g., "open today's daily note in `personal/daily/`", "explore `atlas/`"). No calendar, no email, no signal anchors — those depend on tools we haven't wired and skills we shouldn't invoke yet.
 
 Update `_workdesk/state/signals.json` `daily-plan.last-fired` to today.
 
@@ -98,13 +154,15 @@ Mark phase `complete`.
 
 ### 6. Graduation
 
-Two-action close:
+Snappy wrap. One short message.
 
-> *"Use the daily-plan tomorrow morning. Run `/weekly-review` at end of week."*
+> *"You're set up. Tomorrow morning, run `/daily-ops morning` for your real daily plan. End of the week, try `/weekly-review`. I'll start surfacing vault-improvement suggestions in two weeks."*
 
-Set `vault-improvements.suppressed-until` in `_workdesk/state/signals.json` to `today + 14 days`. Tell the operator the system will start surfacing improvement proposals in 2 weeks.
+Do not run those skills now — just point at them.
 
-Mark phase `complete`. Emit final summary.
+Set `vault-improvements.suppressed-until` in `_workdesk/state/signals.json` to `today + 14 days`.
+
+Mark phase `complete`. Emit a short final summary (areas + engagements created, tools enabled, daily plan path, suppression date). Three lines max.
 
 ## Output
 
@@ -121,3 +179,7 @@ Mark phase `complete`. Emit final summary.
 - Don't write to `personal/`. The lock is hard.
 - Don't fabricate contexts — if operator says "I'll add later", leave gaps and continue.
 - Don't auto-trigger meta-skills during onboarding except for the area/container scaffolds described above.
+- Don't invoke `/daily-ops` or `/weekly-review` during the flow. Phase 5 produces a minimal cold-start plan inline; Phase 6 only points at those skills for the operator to run themselves later.
+- Don't stack questions. One question per turn, always. If you're about to write "Question 1 — ... Question 2 — ..." in a single message, stop and split it.
+- Don't dump baseline state ("atlas/ has X, Y, Z. Doctor green.") before asking the next question. The operator doesn't need a status report between steps.
+- Don't pre-fill answers from external context (CLAUDE.md, env vars, vault path, git config). Ask the question fresh.
