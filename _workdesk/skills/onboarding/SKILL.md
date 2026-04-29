@@ -26,7 +26,12 @@ Confirmation guard: running `/onboarding` after graduation says: *"Onboarding co
 
 ### 1. Environment check
 
-Read `_workdesk/state/doctor.md`. If `result: pass` is not present or `last-run` is older than the current session, pause and instruct operator to run `/workdesk-doctor` first. No questions yet.
+Onboarding owns its own prerequisite. Do not bounce the operator out to run another command.
+
+Read `_workdesk/state/doctor.md`. If `result: pass` is present and `last-run` is within the current session, continue. Otherwise, **invoke `/workdesk-doctor` inline** (as a skill call from within onboarding), wait for it to complete, then re-read `_workdesk/state/doctor.md`.
+
+- If doctor passes → continue Phase 1.
+- If doctor fails → surface a concise summary of which checks failed, then stop. Do not ask the operator to run doctor manually; the run already happened. (Self-fix on failure is C9 territory and lands separately.)
 
 Confirm `_workdesk/` resolves and report what's already in place. Read-only.
 
@@ -116,7 +121,7 @@ Mark phase `complete`. Emit final summary.
 
 ## What NOT to do
 
-- Don't skip Phase 1. Doctor must pass first.
+- Don't skip Phase 1. Doctor must pass first — but onboarding runs doctor itself; never instruct the operator to run a separate command before continuing.
 - Don't scaffold areas/containers the operator declined. Idempotent re-runs respect prior choices.
 - Don't write to `personal/`. The lock is hard.
 - Don't fabricate contexts — if operator says "I'll add later", leave gaps and continue.
