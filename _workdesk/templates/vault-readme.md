@@ -19,9 +19,8 @@ Five short videos — one per zone. Watch in order, or jump to any.
 ## Quick reference
 
 - Run `/onboarding` to redo the orientation anytime
-- Run `/daily-ops morning` each morning to get your daily plan
 - Run `/workdesk-doctor` if anything feels off
-- Each WorkDesk skill introduces itself the first time you run it
+- Each WorkDesk skill introduces itself the first time you run it — explore them in `_workdesk/skills/` when you're ready
 
 ## Where things live
 
