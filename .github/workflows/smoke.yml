@@ -10,5 +10,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run smoke test
+      - name: Bootstrap smoke
         run: ./tests/smoke.sh
+      - name: init.sh smoke
+        run: ./tests/init-smoke.sh

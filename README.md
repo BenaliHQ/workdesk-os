@@ -28,29 +28,34 @@ WorkDesk OS turns a fresh vault into a five-zone, agent-guided system that captu
 
 ## Install
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/BenaliHQ/workdesk-os/main/bootstrap.sh -o bootstrap.sh
-chmod +x bootstrap.sh
-./bootstrap.sh /path/to/empty-vault
-```
+Three steps, each one-click:
 
-Or clone and run locally:
+1. Install **Obsidian** (≥1.12.2) from https://obsidian.md/download — drag to `/Applications`, open it once, approve any macOS prompts, then quit.
+2. Install **Claude Code** from https://claude.com/claude-code.
+3. Run the install:
 
 ```bash
-git clone https://github.com/BenaliHQ/workdesk-os.git
-cd workdesk-os
-./bootstrap.sh /path/to/empty-vault
+curl -fsSL https://raw.githubusercontent.com/BenaliHQ/workdesk-os/main/init.sh | bash
 ```
 
-The vault must be empty (`.obsidian/`, `.git/`, `.DS_Store`, `.gitignore`, and a single empty `README.md` are tolerated). V1 refuses to install over existing content; V2 ships a `/migrate` skill.
+Defaults: vault at `~/Workdesk-OS/`. Configure via env vars:
 
-Preview without installing:
+| Env var | Default | Purpose |
+|---|---|---|
+| `WORKDESK_VAULT_PATH` | `~/Workdesk-OS/` | Vault location |
+| `WORKDESK_INIT_DRYRUN` | unset | Print the plan, no writes |
+| `WORKDESK_INIT_FORCE` | unset | Reuse a non-empty vault per ownership list |
+| `WORKDESK_INIT_OPEN` | unset | Launch Obsidian at the new vault on success |
+
+The orchestrator verifies prerequisites (Obsidian present + version + non-quarantined, Claude Code on PATH, Obsidian not currently running), downloads the pinned tarball, runs `bootstrap.sh`, vendors 7 plugins with SHA256 verification per artifact, seeds BRAT to track our terminal fork, and registers the vault in Obsidian's registry. **No sudo, no Homebrew, no Xcode CLT.** All macOS-native tooling.
+
+Preview without writing anything:
 
 ```bash
-./bootstrap.sh --dry-run /path/to/empty-vault
+WORKDESK_INIT_DRYRUN=1 curl -fsSL https://raw.githubusercontent.com/BenaliHQ/workdesk-os/main/init.sh | bash
 ```
 
-Runs preflight (macOS check, dependency check, empty-vault check) and prints the install plan without writing anything.
+`bootstrap.sh` remains as the lower-level primitive — advanced users can invoke it directly with a path argument — but `init.sh` is the V1.1 user-visible install.
 
 ## First session
 
