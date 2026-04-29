@@ -218,13 +218,14 @@ After the chosen path completes, update:
 - `_workdesk/onboarding-state.md` phase 4 `complete: true`, `graduated: true`, `graduated-at: <iso-timestamp>`, `graduation-path: pobo|daily-note`
 - `_workdesk/state/signals.json` `vault-improvements.suppressed-until: <today + 14d>`
 
-**Final summary** (three lines, no decoration):
+**Final summary** (two lines, no decoration):
 
 ```
 Profile saved at _workdesk/operator-profile.md.
 Tools tracked: <count>. Wire any with /define-tool <name> when you need them.
-Tomorrow: run /daily-ops morning to get your real daily plan.
 ```
+
+Do not point the operator at `/daily-ops`, `/weekly-review`, or any other follow-up skill at the close. They'll discover skills when they're ready — that's the whole point of the skill-first-run pattern.
 
 Mark phase 4 complete.
 
@@ -245,11 +246,11 @@ After graduation:
 - Don't fabricate contexts or pre-fill answers from `~/.claude/CLAUDE.md`, env vars, vault path, or git config. Ask fresh.
 - Don't stack questions. One question per turn, period.
 - Don't dump baseline state ("atlas/ has X, Y, Z. Doctor green.") between turns.
-- Don't invoke `/daily-ops` or `/weekly-review` during the flow. Phase 4 graduates; tomorrow the operator runs `/daily-ops morning` themselves.
+- Don't invoke `/daily-ops` or `/weekly-review` during the flow. Don't reference them at graduation either — no "tomorrow run X" pointers, no skill catalog. The operator discovers downstream skills when they're ready.
 - Don't surface or invoke skills outside `_workdesk/skills/`. No `ops-manager`, no sibling-project leakage, no MCP-surfaced tools as skills.
 - Don't prompt for MCP / API integration setup. Phase 2 Q5 is inventory only; connection deferred to `/define-tool`.
 - Don't ask for *lists* of things the operator might balk at. Ask for one (one project name, one tool category at a time when probing). Lists trigger overwhelm.
 - Don't introduce a concept before the operator touches the artifact it names. Zones get named in Phase 3 because that's when it's time; no glossary up front.
-- Don't enumerate the WorkDesk skill catalog at graduation. Name the one habit (`/daily-ops morning`); the rest reveals itself when invoked.
+- Don't enumerate the WorkDesk skill catalog at graduation. Don't name a "first habit" either. Graduation confirms what just happened; the operator drives what comes next.
 - Don't gate Phase 4 on prior skips. Even if Phase 2 was skipped halfway, the operator can still choose pobo or daily-note.
 - Don't coerce free-text answers (role, work-mode, areas) into preset categories. Examples are illustrative, not multiple-choice.
