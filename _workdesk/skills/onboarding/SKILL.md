@@ -1,11 +1,13 @@
 ---
 name: onboarding
-description: Six-phase guided orientation for a freshly bootstrapped vault. Captures the operator's role mix, scaffolds active contexts, detects optional tools, generates the first daily plan, and graduates to normal use. Idempotent and resumable. Sub-commands --status, --restart, --update-profile.
+description: Five-phase calm orientation for a freshly bootstrapped vault. Silent doctor self-check, welcome, operator-profile interview, brief zone tour, then graduate by either planning a real project with /pobo or starting today's daily note. One question per turn. Idempotent and resumable. Sub-commands --status, --restart, --update-profile.
 ---
 
 # /onboarding
 
-V1 onboarding is six phases, each writing results as it goes. If interrupted, partial work is preserved and resuming picks up at the first non-`complete` phase. Self-sufficient — videos optional.
+Calm, concierge-style first-run experience. Five phases. One question per turn. Each phase writes results as it goes — if interrupted, partial work is preserved and resuming picks up at the first non-`complete` phase.
+
+Source spec: `atlas/projects/workdesk/specs/onboarding-redesign.md` (in the operator's secondary vault — that's the design contract this skill implements).
 
 ## Sub-commands
 
@@ -20,104 +22,234 @@ Run proactively when:
 - `_workdesk/onboarding-state.md` exists with any phase still `pending` or `incomplete`
 - AND operator has not dismissed onboarding this session
 
-Confirmation guard: running `/onboarding` after graduation says: *"Onboarding complete. Use --restart to redo everything (vault content is safe), or --update-profile to adjust role mix."*
+Confirmation guard: running `/onboarding` after graduation says: *"Onboarding complete. Use `--restart` to redo it (vault content is safe), or `--update-profile` to adjust your profile."*
+
+## Scope — workdesk skills only
+
+The only skills that exist for this session are those under `<vault>/_workdesk/skills/*/SKILL.md`. That is the closed universe.
+
+When listing, proposing, suggesting, resolving, or invoking a skill name during onboarding, enumerate **only** the `_workdesk/skills/` directory of the active vault. Do not surface, mention, or auto-invoke:
+
+- skills installed at `~/.claude/skills/` (user-level)
+- skills from sibling projects' `.claude/skills/` directories
+- skills loaded by other vaults that share the same Claude Code environment
+- tools surfaced by MCP servers as if they were skills
+- plugin-provided skills outside the workdesk plugin set
+
+If the operator references a skill by name (e.g., "/foo"), resolve it against `_workdesk/skills/` only. If no match, reply: "That's not a WorkDesk skill. The WorkDesk skills are: [list from `_workdesk/skills/`]." Do not silently fall through to a same-named skill from another scope.
+
+## Style — pacing and tone
+
+This is a guided conversation, not a form. Hard rules:
+
+- **One question per turn.** Ask one thing, wait for the answer, then ask the next. Never stack two questions in one message.
+- **Snappy.** Short sentences. Plain words. No bureaucratic preambles ("I need your input here", "Question 1 —", baseline-state dumps).
+- **Frame each phase in one line before the first question.** Not three paragraphs. One line. Then the question.
+- **Back-and-forth pace.** Treat it like a chat with someone next to you, not a wizard form.
+- **Do not pre-fill answers from external context.** If you can see the operator's name or context from `~/.claude/CLAUDE.md`, env vars, vault path, or git config — ignore it for the purpose of asking. Ask fresh. Operators tell you if they want to short-circuit ("yeah, that's me"). Inferring up front feels presumptuous.
+- **No baseline-state dumps before questions.** Don't list what's already in `atlas/` or what doctor returned before asking the next question. The operator doesn't need a status report; they need the next step.
+- **Examples are illustrative, not options.** When a question lists examples (roles, tools, etc.), the operator can answer with anything — not just the listed ones. Treat examples as prompts for thought, not a closed multiple-choice.
 
 ## Phases
 
-### 1. Environment check
+### Phase 0 — Doctor (silent)
 
-Read `_workdesk/state/doctor.md`. If `result: pass` is not present or `last-run` is older than the current session, pause and instruct operator to run `/workdesk-doctor` first. No questions yet.
+**Purpose:** prove the install works without asking the operator to do anything.
 
-Confirm `_workdesk/` resolves and report what's already in place. Read-only.
+Onboarding owns its own prerequisite. Do not bounce the operator out to run a separate command.
 
-Mark phase `complete` in `_workdesk/onboarding-state.md`.
+Read `_workdesk/state/doctor.md`. If `result: pass` is present and `last-run` is within the current session, continue silently. Otherwise:
 
-### 2. Role map
+1. Invoke `/workdesk-doctor` inline (as a skill call from within onboarding). Wait for it to complete.
+2. Re-read `_workdesk/state/doctor.md`.
+3. **Pass** → continue silently to Phase 1.
+4. **Yellow** (fixable issues) → attempt minimal self-fix: chmod missing exec bits on `_workdesk/scripts/*.sh`, recreate broken state files from defaults, repair direct-symlink mismatches. Re-run doctor. If now green, continue silently.
+5. **Red** (unfixable) → surface a single concise message naming what failed and stop. Do not list options or open a menu.
 
-Capture mixed-persona profile.
+**Self-fix scope (V1.1):** chmod, recreate state files, repair symlinks. Out of scope: reinstalling plugins, reauth, anything that requires the operator to leave the chat.
 
-> *"Which of these describe how you spend your time? Pick one or more — order matters for daily-plan tonality."*
+**No operator prompt at this phase.** No "running doctor now…" status messages. Silent unless something's red.
 
-Options: `consultant`, `founder`, `employee`, `researcher`, `creative`, `parent`, `personal`.
+Mark phase 0 complete in `_workdesk/onboarding-state.md`.
 
-Write `_workdesk/operator-profile.md` `role-mix:` and `name:` (also ask for name). No JTBD interview yet.
+### Phase 1 — Welcome
 
-Mark phase `complete`.
+**Purpose:** orient. Set expectations. Land the concierge tone.
 
-### 3. Context setup
+**Pre-step (silent):** if `<vault>/README.md` does not exist, write the vault-root README from the template at `<vault>/_workdesk/templates/vault-readme.md`. Do not overwrite an existing README — operators who customized theirs keep their version.
 
-Always: create `atlas/areas/` instances based on the role mix. Examples by role:
-- consultant → `atlas/areas/finance/`, `atlas/areas/pipeline/`, `atlas/areas/health/`
-- founder → `atlas/areas/hiring/`, `atlas/areas/runway/`, `atlas/areas/ops/`
-- employee → `atlas/areas/role/`, `atlas/areas/career/`
-- researcher → `atlas/areas/methods/`, `atlas/areas/teaching/`
-- creative → `atlas/areas/studio/`, `atlas/areas/audience/`
-- parent → `atlas/areas/household/`, `atlas/areas/family/`, `atlas/areas/health/`
+**Opening message** (single short paragraph, exact text):
 
-Ask: *"Want to scaffold these areas? You can skip any."* Operator confirms or skips per item.
+> *"Let's get your WorkDesk set up. Five quick steps — environment check (done), a few questions about you, a quick tour of your vault, and then we'll either plan a project together or start today's daily note. I'll go one thing at a time. You can bail anytime — we pick up where we left off. Sound good?"*
 
-Optional engagement containers per role mix (per the role-map prompt table in the plan):
-- consultant → `atlas/clients/`
-- founder → `atlas/businesses/`
-- employee → `atlas/teams/` or `atlas/departments/`
-- researcher → `atlas/labs/` or `atlas/collaborations/`
-- creative → `atlas/disciplines/` (or user-named)
+Wait for affirmative. If declined: *"Run `/onboarding` whenever you're ready."* Stop.
 
-Operator picks zero or more. For each chosen container, ask for one initial instance name to seed (or skip seeding).
+Mark phase 1 complete.
 
-Each new `_brief.md` uses the 4-item structure (areas/engagements) or 8-item (initiatives — not created here). Frontmatter sets `expected-cadence` defaults, `last-touched` to today.
+### Phase 2 — Operator profile interview
 
-Update `operator-profile.md` `primary-contexts.engagements` and `primary-contexts.areas` with canonical `_brief.md` wikilinks.
+**Purpose:** build the operator profile that downstream skills read. One question per turn. Never stack.
 
-Mark phase `complete`.
+After each answer, write to `_workdesk/operator-profile.md` immediately, then ask the next question.
 
-### 4. Tool setup
+**Q1 — name:**
 
-Detect and verify optional connectors. For each:
+> *"First — what should I call you?"*
 
-- **Granola** — check `~/Library/Application Support/com.granola.app/` exists; smoke test = list folder
-- **Google Workspace (`gws`)** — `command -v gws` + `gws auth status`
-- **qmd** — `command -v qmd` + `qmd status`
-- **Defuddle** — `command -v defuddle` + parse a known-good URL
-- **Codex CLI** — `command -v codex`
+Free text. Save to `name:`. Do not pull a name from `~/.claude/CLAUDE.md`, vault path, git config, or anywhere else.
 
-For each: present, run smoke test, record result in `enabled-tools`. Missing tools never block — they degrade the signals that depend on them.
+**Q2 — role (open-ended):**
 
-Mark phase `complete`.
+> *"How would you describe what you do? Examples — consultant, founder, employee, researcher, creative, parent, or anything else. There are no preset options; describe it the way you'd describe it to someone you just met."*
 
-### 5. First daily plan
+Free text. Examples are illustrative. Operator can answer however they like — coerce nothing. Save verbatim to `role:`.
 
-Generate `intel/briefings/daily/{today}-daily-plan.md` from whatever data exists:
-- **Rich data** path: full plan via daily-plan signal anchors
-- **Sparse data** path: 7-step fallback chain
-- **Cold start** path: setup-oriented plan ("Nothing scheduled. First steps: …")
+**Q3 — work mode:**
 
-Update `_workdesk/state/signals.json` `daily-plan.last-fired` to today.
+> *"What does most of your work look like? Heavy meetings, heavy deep-work, mixed, or something else?"*
 
-Mark phase `complete`.
+Free text. Save to `work-mode:`.
 
-### 6. Graduation
+**Q4 — areas of focus (durable):**
 
-Two-action close:
+> *"What are the areas you focus on most — generally, not just right now? Could be domains (finance, ops, design), topics, or kinds of work. Two or three is plenty."*
 
-> *"Use the daily-plan tomorrow morning. Run `/weekly-review` at end of week."*
+Parse into a list. Save under `## Areas of focus` in the profile body. Deliberately durable, not point-in-time priorities.
 
-Set `vault-improvements.suppressed-until` in `_workdesk/state/signals.json` to `today + 14 days`. Tell the operator the system will start surfacing improvement proposals in 2 weeks.
+**Q5 — tools you use today (inventory only, no connection):**
 
-Mark phase `complete`. Emit final summary.
+Send a single message that names categories with several examples each, then asks the operator's list:
+
+> *"What tools do you use day-to-day? Just naming them helps me know what's in your stack — I won't connect anything until you actually need it. Some categories and examples:*
+>
+> - *Comms — Slack, Microsoft Teams, Discord*
+> - *Email + calendar — Gmail / Google Workspace, Outlook*
+> - *Meetings + transcription — Granola, Google Meet, Zoom, Teams, Otter, Fireflies*
+> - *Project management — ClickUp, Notion, Asana, Linear, Trello*
+> - *CRM — HubSpot, Salesforce, Apollo, Pipedrive*
+> - *Storage — Google Drive, Dropbox, OneDrive, iCloud*
+> - *Design — Figma, Canva*
+> - *Code + deploy — GitHub, GitLab, Vercel, Netlify*
+> - *Finance — QuickBooks, Xero*
+>
+> *Tell me whichever you use — and anything else not on the list."*
+
+For each named tool:
+
+1. Slugify the name (lowercase, kebab-case).
+2. If `_workdesk/tools/<slug>.md` already exists (seeded), set `confirmed-by-operator: true` on its frontmatter. Do **not** overwrite content.
+3. If absent, create `_workdesk/tools/<slug>.md` with frontmatter (`tool:`, `slug:`, `category:` inferred from context, `class: operator-named`, `connected: false`, `added-on:` today, `connector: unknown`) and stub body sections (`## What it is`, `## Best practices`, `## Connection notes`, `## Linked use cases`).
+
+Update the profile body's `## Tools in use` section with wikilinks to each tool note.
+
+**Q6 — transcription sources (multiple allowed):**
+
+> *"Of those, which do you actually use to capture meetings? You can name more than one — Granola for some meetings, Zoom for others, etc."*
+
+For each named tool, append `transcription` to its `preferred-for:` list on the corresponding `_workdesk/tools/<slug>.md`. Multiple is normal.
+
+If "none" or "skip," continue. Transcript-processing skill's first-run will handle wiring later.
+
+Mark phase 2 complete.
+
+### Phase 3 — Zone tour (5 short turns)
+
+**Purpose:** name each zone and how to add to it. Briefly. Tutorial videos handle depth.
+
+One zone per turn, in this order. Each turn is **three sentences max:** what it's for, how the operator adds to it, no preamble. No "Phase 3:" prefix on the messages — just the zone content.
+
+After Phase 2 completes, send the first zone message. Operator doesn't need to respond between zones; you can send them as a back-to-back sequence with a brief pause for them to read. If they ask a question mid-tour, answer briefly and continue.
+
+**3a — `personal/`:**
+
+> *"`personal/` is your space — daily notes, journal, reading, anything you write. Claude or any other agent never writes in `personal/`, and you should never want me to. You'll add to it most by running your daily note."*
+
+The lock language is deliberate. Do not soften it to "unless you ask." The PreToolUse hook enforces the boundary at runtime; this teaches it conceptually.
+
+**3b — `atlas/`:**
+
+> *"`atlas/` is what you manage — people, decisions, initiatives, meetings. When something has its own identity worth tracking, it goes here."*
+
+**3c — `GTD/`:**
+
+> *"`GTD/` is for actions and projects — standard getting-things-done shape, like David Allen recommends."*
+
+**3d — `intel/`:**
+
+> *"`intel/` is what I observe — daily briefings, research, vault improvements. Lower trust than `atlas/` because I write it independently."*
+
+**3e — `system/`:**
+
+> *"`system/` is your sources — transcripts, bookmarks, session logs. Everything that comes in lands in `_intake/` first, gets processed, and once processed moves to the right folder. Objects in `atlas/` get updated or created from there."*
+
+**Closing line** (after 3e):
+
+> *"All five tutorial videos live in your vault README — open it whenever you want to rewatch."*
+
+Mark phase 3 complete.
+
+### Phase 4 — Graduation (the fork)
+
+**Purpose:** the operator does one real thing. Right now, not tomorrow.
+
+**Opening message:**
+
+> *"You're set up. Two ways to wrap: I can walk you through planning a project with `/pobo`, or we can just open today's daily note so you can start writing. Either's fine. Which?"*
+
+Wait for choice.
+
+**Path A — `/pobo` a project:**
+
+If operator picks pobo:
+1. Mark phase 4 in-progress with `path: pobo` in `_workdesk/onboarding-state.md`.
+2. Invoke `/pobo` (skill call from within onboarding). Pobo handles its own first-run flow per the skill-first-run sidecar pattern and produces a real project structure (default: `atlas/initiatives/<slug>/`).
+3. When pobo completes, return to onboarding to finalize graduation.
+
+**Path B — daily note:**
+
+If operator picks daily note:
+1. Mark phase 4 in-progress with `path: daily-note`.
+2. Create `personal/daily/{today}.md` from the template at `<vault>/_workdesk/templates/daily-note.md`. Substitute `{today}` with ISO date.
+3. Open the file in Obsidian via URI scheme: `obsidian://open?vault=<vault-name>&file=personal/daily/{today}`. If the URI launch fails (e.g., Obsidian not focused, terminal can't `open` URLs), fall back to printing the path and instructing the operator to click it in the file tree.
+
+**Either path: graduation marker.**
+
+After the chosen path completes, update:
+- `_workdesk/onboarding-state.md` phase 4 `complete: true`, `graduated: true`, `graduated-at: <iso-timestamp>`, `graduation-path: pobo|daily-note`
+- `_workdesk/state/signals.json` `vault-improvements.suppressed-until: <today + 14d>`
+
+**Final summary** (three lines, no decoration):
+
+```
+Profile saved at _workdesk/operator-profile.md.
+Tools tracked: <count>. Wire any with /define-tool <name> when you need them.
+Tomorrow: run /daily-ops morning to get your real daily plan.
+```
+
+Mark phase 4 complete.
 
 ## Output
 
-- Areas + engagement containers created (paths)
-- Tools detected (names)
-- Daily plan path
-- Suppression date for vault-improvements
-- Next two suggested actions
+After graduation:
+- `_workdesk/operator-profile.md` populated
+- `_workdesk/tools/<slug>.md` per named tool (seeded notes confirmed, operator-named notes created)
+- `<vault>/README.md` materialized (if not pre-existing)
+- One real artifact: either an initiative under `atlas/initiatives/` (Path A) or today's daily note under `personal/daily/` (Path B)
+- `_workdesk/onboarding-state.md` shows `graduated: true`
+- Vault-improvement suppression set 14 days out
 
 ## What NOT to do
 
-- Don't skip Phase 1. Doctor must pass first.
-- Don't scaffold areas/containers the operator declined. Idempotent re-runs respect prior choices.
-- Don't write to `personal/`. The lock is hard.
-- Don't fabricate contexts — if operator says "I'll add later", leave gaps and continue.
-- Don't auto-trigger meta-skills during onboarding except for the area/container scaffolds described above.
+- Don't skip Phase 0. Doctor must self-run and self-fix. Never instruct the operator to run a separate command before continuing.
+- Don't write to `personal/` except the templated daily-note creation in Phase 4 Path B (the only sanctioned write).
+- Don't fabricate contexts or pre-fill answers from `~/.claude/CLAUDE.md`, env vars, vault path, or git config. Ask fresh.
+- Don't stack questions. One question per turn, period.
+- Don't dump baseline state ("atlas/ has X, Y, Z. Doctor green.") between turns.
+- Don't invoke `/daily-ops` or `/weekly-review` during the flow. Phase 4 graduates; tomorrow the operator runs `/daily-ops morning` themselves.
+- Don't surface or invoke skills outside `_workdesk/skills/`. No `ops-manager`, no sibling-project leakage, no MCP-surfaced tools as skills.
+- Don't prompt for MCP / API integration setup. Phase 2 Q5 is inventory only; connection deferred to `/define-tool`.
+- Don't ask for *lists* of things the operator might balk at. Ask for one (one project name, one tool category at a time when probing). Lists trigger overwhelm.
+- Don't introduce a concept before the operator touches the artifact it names. Zones get named in Phase 3 because that's when it's time; no glossary up front.
+- Don't enumerate the WorkDesk skill catalog at graduation. Name the one habit (`/daily-ops morning`); the rest reveals itself when invoked.
+- Don't gate Phase 4 on prior skips. Even if Phase 2 was skipped halfway, the operator can still choose pobo or daily-note.
+- Don't coerce free-text answers (role, work-mode, areas) into preset categories. Examples are illustrative, not multiple-choice.
