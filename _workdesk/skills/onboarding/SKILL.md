@@ -7,6 +7,22 @@ description: Six-phase guided orientation for a freshly bootstrapped vault. Capt
 
 V1 onboarding is six phases, each writing results as it goes. If interrupted, partial work is preserved and resuming picks up at the first non-`complete` phase. Self-sufficient — videos optional.
 
+## Scope — workdesk skills only
+
+Throughout this flow, the only skills that exist are those under `<vault>/_workdesk/skills/*/SKILL.md`. That is the closed universe.
+
+When listing, proposing, suggesting, resolving, or invoking a skill name during onboarding, enumerate **only** the `_workdesk/skills/` directory of the active vault. Do not surface, mention, or auto-invoke:
+
+- skills installed at `~/.claude/skills/` (user-level)
+- skills from sibling projects' `.claude/skills/` directories
+- skills loaded by other vaults that share the same Claude Code environment
+- tools surfaced by MCP servers as if they were skills
+- plugin-provided skills outside the workdesk plugin set
+
+If the operator references a skill by name (e.g., "/foo"), resolve it against `_workdesk/skills/` only. If no match, reply: "That skill isn't part of the WorkDesk set. The WorkDesk skills are: [list from `_workdesk/skills/`]." Do not silently fall through to a same-named skill from another scope.
+
+This rule applies for the entire `/onboarding` session. Post-graduation, the operator can run any skill they want — but the onboarding flow itself stays inside the workdesk universe so the operator builds their mental model from one consistent set.
+
 ## Sub-commands
 
 - `/onboarding` — resume from incomplete phase, or run full flow first time
@@ -121,3 +137,4 @@ Mark phase `complete`. Emit final summary.
 - Don't write to `personal/`. The lock is hard.
 - Don't fabricate contexts — if operator says "I'll add later", leave gaps and continue.
 - Don't auto-trigger meta-skills during onboarding except for the area/container scaffolds described above.
+- Don't enumerate, propose, or invoke skills outside `_workdesk/skills/` (see Scope section). User-level (`~/.claude/skills/`), sibling-project, and MCP-surfaced skills are out of bounds for the onboarding session.
