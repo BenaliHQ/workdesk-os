@@ -27,10 +27,10 @@ Read `_workdesk/state/session-entry.md`. Note the counts:
 
 Follow `_workdesk/signals/daily-plan.md`:
 
-1. Resolve anchors (today's calendar via `gws calendar +agenda --today` if enabled, today's daily note, active project/initiative/area `_status.md`, due recurring items, unread inbox)
+1. Resolve anchors (today's calendar via `gws calendar +agenda --today` if enabled, today's daily note, active project `_status.md`, due recurring items, unread inbox)
 2. Traverse:
    - For each person on today's calendar, fetch their atlas/people note + last meeting
-   - For each project/initiative referenced today, fetch `_status` + recent meetings
+   - For each project referenced today, fetch `_status` + recent meetings
    - Surface stale work where `today - last-touched > 1.5 × expected-cadence`
 3. Apply sparse-data fallback chain (skip layers with no data)
 4. Apply tonality from `operator-profile.role-mix[0]` and `first-30-days-mode`
@@ -49,7 +49,7 @@ schedule: daily
 
 Body sections per the declaration:
 1. Today's commitments + relevant context
-2. Projects/initiatives to advance + where you left off
+2. Projects to advance + where you left off
 3. Stalled items needing attention
 4. Inbox items awaiting triage (with backlog warning if >20)
 

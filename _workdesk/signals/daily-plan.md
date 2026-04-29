@@ -23,8 +23,6 @@ Zones (read from vault):
 - today's daily note (if exists; otherwise most recent in `personal/daily/`)
 - `gtd/inbox/` items (with backlog warning if >20 unresolved)
 - active `gtd/projects/*/_status.md` (status `active`, `last-touched` recent)
-- active `atlas/initiatives/*/_status.md`
-- active `atlas/areas/*/_status.md`
 - due `gtd/recurring/schedules/` items (`status: active` AND `next_due <= today`)
 
 Tools (try if `enabled-tools` lists them; degrade silently if not):
@@ -34,8 +32,8 @@ Tools (try if `enabled-tools` lists them; degrade silently if not):
 ## Traversal
 
 1. For each person on today's calendar: fetch their note + last meeting (no time cap)
-2. For each project/initiative referenced today: fetch `_status` + recent meetings tied to it
-3. Surface stale work: areas, initiatives, projects whose `last-touched` exceeds `1.5 × expected-cadence` (where `expected-cadence: none` is excluded)
+2. For each project referenced today: fetch `_status` + recent meetings tied to it
+3. Surface stale work: projects whose `last-touched` exceeds `1.5 × expected-cadence` (where `expected-cadence: none` is excluded)
 
 ## Sparse-data fallback chain
 
@@ -44,7 +42,7 @@ Try in order; layers with no data are silently skipped:
 1. Calendar commitments (today + tomorrow)
 2. `gtd/actions/next/` (sorted by `parent:` recency)
 3. Due recurring items from `gtd/recurring/schedules/`
-4. Active project + initiative `_status.md` summaries
+4. Active project `_status.md` summaries
 5. Today's daily note
 6. Unread inbox items (with backlog warning if >20)
 7. Stale contexts needing attention
@@ -67,7 +65,7 @@ schedule: daily
 
 Body sections:
 1. Today's commitments + relevant context for each
-2. Projects/initiatives to advance + where you left off
+2. Projects to advance + where you left off
 3. Stalled items needing attention
 4. Inbox items awaiting triage
 

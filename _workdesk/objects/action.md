@@ -10,7 +10,7 @@ version: 1.0
 
 # Object Type: action
 
-Single-session unit of work. The atom of GTD. Anything multi-session is a project (`gtd/projects/`) or initiative (`atlas/initiatives/`).
+Single-session unit of work. The atom of GTD. Anything multi-session is a project at `gtd/projects/`.
 
 ## Format
 
@@ -19,7 +19,7 @@ Single-session unit of work. The atom of GTD. Anything multi-session is a projec
 type: action
 status: next                                           # next | waiting | someday | done
 context: [work, calls, errands]                        # GTD context tags
-parent: "[[atlas/initiatives/dudley-msa-review/_brief]]" # polymorphic, see below
+parent: "[[gtd/projects/dudley-msa-review/_brief]]" # polymorphic, see below
 waiting-on: "[[atlas/people/...]]"                     # only if status: waiting
 source: "[[atlas/meetings/2026-04-22-dudley-weekly]]"  # logged session OR processed material
 created: 2026-04-26
@@ -32,8 +32,7 @@ Body: one paragraph — what needs to happen and why. Outcomes-shaped, not vague
 
 One field, points to whatever owns the action. Allowed:
 
-- `[[gtd/projects/{slug}/_brief]]` — personal-focus project
-- `[[atlas/initiatives/{slug}/_brief]]` — engagement-tied initiative
+- `[[gtd/projects/{slug}/_brief]]` — multi-session project
 - `[[atlas/areas/{slug}/_brief]]` — standing area
 - `[[atlas/clients/{slug}/_brief]]` (or any engagement type) — direct engagement
 - `[[gtd/recurring/schedules/{slug}]]` — promoted from recurring
@@ -58,4 +57,4 @@ Surface `[REVIEW]` proposals to create an action when:
 
 When an action is created from a transcript:
 - Update the transcript's `processed-into:` backlink list
-- If `parent:` resolves to an active project/initiative, surface in that project's next `_status.md` update
+- If `parent:` resolves to an active project, surface in that project's next `_status.md` update

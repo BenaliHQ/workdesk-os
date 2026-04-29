@@ -168,7 +168,7 @@ The lock language is deliberate. Do not soften it to "unless you ask." The PreTo
 
 **3b — `atlas/`:**
 
-> *"`atlas/` is what you manage — people, decisions, initiatives, meetings. When something has its own identity worth tracking, it goes here."*
+> *"`atlas/` is what you manage — people, decisions, meetings. When something has its own identity worth tracking, it goes here."*
 
 **3c — `GTD/`:**
 
@@ -202,7 +202,7 @@ Wait for choice.
 
 If operator picks pobo:
 1. Mark phase 4 in-progress with `path: pobo` in `_workdesk/onboarding-state.md`.
-2. Invoke `/pobo` (skill call from within onboarding). Pobo handles its own first-run flow per the skill-first-run sidecar pattern and produces a real project structure (default: `atlas/initiatives/<slug>/`).
+2. Invoke `/pobo` (skill call from within onboarding). Pobo runs its planning ritual and produces a real project structure at `gtd/projects/<slug>/`.
 3. When pobo completes, return to onboarding to finalize graduation.
 
 **Path B — daily note:**
@@ -235,7 +235,7 @@ After graduation:
 - `_workdesk/operator-profile.md` populated
 - `_workdesk/tools/<slug>.md` per named tool (seeded notes confirmed, operator-named notes created)
 - `<vault>/README.md` materialized (if not pre-existing)
-- One real artifact: either an initiative under `atlas/initiatives/` (Path A) or today's daily note under `personal/daily/` (Path B)
+- One real artifact: either a project under `gtd/projects/` (Path A) or today's daily note under `personal/daily/` (Path B)
 - `_workdesk/onboarding-state.md` shows `graduated: true`
 - Vault-improvement suppression set 14 days out
 

@@ -21,7 +21,7 @@ status: active                                          # active | reversed | su
 date: 2026-04-26
 source: "[[atlas/meetings/2026-04-26-dudley-weekly]]"
 participants: ["[[atlas/people/khalil-benalioulhaj]]", "..."]
-affects: ["[[atlas/initiatives/dudley-msa-review/_brief]]", "..."]
+affects: ["[[gtd/projects/dudley-msa-review/_brief]]", "..."]
 created: 2026-04-26
 last_updated: 2026-04-26
 author: claude
