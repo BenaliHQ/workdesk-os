@@ -183,6 +183,45 @@ state_unmark() {
 
 # ---- step 1: platform-check --------------------------------------------------
 
+obsidian_effective_version() {
+  # Obsidian self-updates its runtime by writing obsidian-<version>.asar into
+  # ~/Library/Application Support/obsidian/ — the bundle's Info.plist
+  # CFBundleShortVersionString stays at the installer version, which can lag
+  # by months. The effective running version is max(installer, latest-asar).
+  local app="$1"
+  local installer
+  installer=$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist" 2>/dev/null) \
+    || installer=""
+
+  local latest_asar=""
+  local asar_dir="$HOME/Library/Application Support/obsidian"
+  if [[ -d "$asar_dir" ]]; then
+    # Match obsidian-<digits.digits.digits>.asar (skip pre-release tags).
+    local f v
+    for f in "$asar_dir"/obsidian-*.asar; do
+      [[ -f "$f" ]] || continue
+      v=$(basename "$f" | sed -E 's/^obsidian-([0-9]+(\.[0-9]+)*).asar$/\1/')
+      [[ "$v" =~ ^[0-9]+(\.[0-9]+)*$ ]] || continue
+      if [[ -z "$latest_asar" ]] || version_ge "$v" "$latest_asar"; then
+        latest_asar="$v"
+      fi
+    done
+  fi
+
+  # Pick the higher of the two.
+  if [[ -n "$installer" && -n "$latest_asar" ]]; then
+    if version_ge "$installer" "$latest_asar"; then
+      printf '%s' "$installer"
+    else
+      printf '%s' "$latest_asar"
+    fi
+  elif [[ -n "$latest_asar" ]]; then
+    printf '%s' "$latest_asar"
+  else
+    printf '%s' "$installer"
+  fi
+}
+
 step_platform_check() {
   log_step "platform-check"
 
@@ -207,13 +246,15 @@ step_platform_check() {
     fail "Obsidian is quarantined (never launched)." "Open Obsidian once and approve macOS prompts, then quit and re-run."
   fi
 
-  # Obsidian version (compare to max minAppVersion across vendored plugins,
-  # which we read from the source tree later — at this stage we just verify
-  # plutil can read the version. Full check is in step_repo_fetched.)
+  # Obsidian version. Honor the auto-updated runtime (obsidian-X.Y.Z.asar in
+  # ~/Library/Application Support/obsidian/) over the bundle Info.plist if
+  # higher — the asar is what Obsidian actually loads at runtime.
   local found
-  found=$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist" 2>/dev/null) \
-    || fail "Could not parse Obsidian version from Info.plist." "Inspect or report."
-  log_info "Obsidian version: $found"
+  found=$(obsidian_effective_version "$app")
+  if [[ -z "$found" ]]; then
+    fail "Could not parse Obsidian version." "Inspect $app/Contents/Info.plist and ~/Library/Application Support/obsidian/obsidian-*.asar."
+  fi
+  log_info "Obsidian effective version: $found"
   OBSIDIAN_APP="$app"
   OBSIDIAN_VERSION="$found"
 
