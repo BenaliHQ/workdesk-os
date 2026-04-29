@@ -20,6 +20,42 @@ test_root="$repo_root/.workdesk-init-test"
 rm -rf "$test_root"
 mkdir -p "$test_root"
 
+# Mock `claude`, `mdfind`, and Obsidian.app so platform-check passes in CI
+# environments that don't have Claude Code or Obsidian installed.
+mock_bin="$test_root/mock-bin"
+mock_obsidian="$test_root/Obsidian.app"
+mkdir -p "$mock_bin" "$mock_obsidian/Contents"
+
+cat > "$mock_bin/claude" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$mock_bin/claude"
+
+# Build a minimal Info.plist with CFBundleShortVersionString >= 1.12.2 so
+# the Obsidian min-version check passes (Templater is the floor at 1.12.2).
+cat > "$mock_obsidian/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleShortVersionString</key>
+  <string>99.99.99</string>
+  <key>CFBundleIdentifier</key>
+  <string>md.obsidian</string>
+</dict>
+</plist>
+PLIST
+
+# Shadow mdfind to return our fake Obsidian.app path.
+cat > "$mock_bin/mdfind" <<STUB
+#!/usr/bin/env bash
+echo "$mock_obsidian"
+STUB
+chmod +x "$mock_bin/mdfind"
+
+export PATH="$mock_bin:$PATH"
+
 pass=0
 fail=0
 assert() {
@@ -149,7 +185,7 @@ fi
 # ---- BRAT fixture parses + has required keys --------------------------------
 printf '\n[scenario] BRAT fixture is valid + complete\n'
 fixture="$repo_root/vendor/plugins/obsidian42-brat/data.json.fixture"
-if plutil -p "$fixture" >/dev/null 2>&1; then
+if plutil -convert json -o /dev/null "$fixture" >/dev/null 2>&1; then
   printf '  PASS  fixture parses as JSON\n'
   pass=$((pass+1))
 else

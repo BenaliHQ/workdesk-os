@@ -94,10 +94,13 @@ version_ge() {
 
 # ---- json helpers (plutil only) ---------------------------------------------
 
-# JSON parse check. plutil -lint rejects JSON on macOS 26.4.1 (only xml1/binary
-# plists); plutil -p reads JSON correctly and returns non-zero on invalid input.
+# JSON parse check. macOS plutil quirks across versions:
+#   plutil -lint rejects JSON on macOS 26.4.1 (only xml1/binary plists)
+#   plutil -p   accepts JSON on macOS 26 but not consistently on macOS 14
+# `plutil -convert json -o /dev/null <file>` round-trips through the JSON
+# converter and is supported across macOS 11+; non-zero exit on invalid input.
 json_ok() {
-  plutil -p "$1" >/dev/null 2>&1
+  plutil -convert json -o /dev/null "$1" >/dev/null 2>&1
 }
 
 # Atomic JSON write: caller passes a target path and writes content via stdin.
