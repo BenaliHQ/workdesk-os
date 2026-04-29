@@ -378,7 +378,9 @@ step_repo_fetched() {
 
   local tmpfile
   tmpfile=$(mktemp -t workdesk-init-tarball).tar.gz
-  trap 'rm -f "$tmpfile"' RETURN
+  # Use indirection so the trap firing after function exit doesn't trip
+  # set -u when the local var has gone out of scope.
+  trap '[[ -n "${tmpfile:-}" ]] && rm -f "$tmpfile"' RETURN
 
   log_info "downloading $tarball_url"
   curl -fsSL "$tarball_url" -o "$tmpfile" \
@@ -524,47 +526,40 @@ step_community_plugins_enabled() {
     return 0
   fi
 
-  # Build merged list: existing + our 7 (de-duplicated).
-  local existing_json="[]"
+  # Build a deduped union of existing ids + our 7. plutil's `-insert N
+  # -string ... -append` is unreliable on some macOS versions (Trace/BPT trap)
+  # so we collect ids in a bash array, dedupe, then write the JSON literal
+  # directly — one shot, no incremental plutil mutations.
+  local merged=()
   if [[ -f "$cp_file" ]] && json_ok "$cp_file"; then
-    existing_json=$(cat "$cp_file")
-  fi
-
-  # Use plutil to compose. We can't easily merge arrays with plutil alone; use
-  # a small Python-free approach: produce a fresh array containing existing
-  # entries (extracted via plutil) plus our 7 ids, deduped.
-  local tmp="$cp_file.tmp.$$"
-  printf '[]' > "$tmp"
-
-  # Append existing ids
-  local count
-  count=$(plutil -extract '' raw "$cp_file" 2>/dev/null | wc -l 2>/dev/null || echo 0)
-  if [[ -f "$cp_file" ]]; then
-    local i=0
-    while :; do
-      local val
-      val=$(plutil -extract "$i" raw "$cp_file" 2>/dev/null) || break
-      # Append val to tmp array
-      plutil -insert "$i" -string "$val" -append "$tmp" 2>/dev/null \
-        || plutil -insert "$i" -string "$val" "$tmp"
+    local i=0 val
+    while val=$(plutil -extract "$i" raw "$cp_file" 2>/dev/null); do
+      merged+=("$val")
       i=$((i+1))
     done
   fi
 
-  # Append our 7 ids if not already present
+  local id present
   for id in "${PLUGIN_IDS[@]}"; do
-    local found="" j=0
-    while :; do
-      local existing
-      existing=$(plutil -extract "$j" raw "$tmp" 2>/dev/null) || break
-      if [[ "$existing" == "$id" ]]; then found="yes"; break; fi
-      j=$((j+1))
+    present=""
+    for existing in ${merged[@]+"${merged[@]}"}; do
+      [[ "$existing" == "$id" ]] && { present="yes"; break; }
     done
-    if [[ -z "$found" ]]; then
-      plutil -insert "$j" -string "$id" -append "$tmp" 2>/dev/null \
-        || plutil -insert "$j" -string "$id" "$tmp"
-    fi
+    [[ -z "$present" ]] && merged+=("$id")
   done
+
+  # Compose the JSON array literal manually — ids are plain ASCII plugin slugs,
+  # no escaping needed.
+  local tmp="$cp_file.tmp.$$"
+  {
+    printf '['
+    local first=1
+    for id in "${merged[@]}"; do
+      [[ "$first" -eq 1 ]] && first=0 || printf ','
+      printf '"%s"' "$id"
+    done
+    printf ']'
+  } > "$tmp"
 
   json_ok "$tmp" || { rm -f "$tmp"; fail "community-plugins.json write produced invalid JSON" "Inspect $tmp"; }
   mv "$tmp" "$cp_file"
