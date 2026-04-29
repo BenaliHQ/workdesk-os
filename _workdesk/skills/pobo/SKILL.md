@@ -11,6 +11,76 @@ Plan any multi-step project using a guided conversational interview based on the
 
 - `/pobo` — full ritual
 - `/pobo --lite` — 3-field minimum (low-stakes, fast)
+- `/pobo --first-run` — re-trigger the first-run flow (override the marker)
+
+## First-run
+
+Run the flow below on the **first invocation only** for this operator. Detection:
+
+1. Read `<vault>/_workdesk/state/skill-first-runs.md`. Create the file with header + format note if it doesn't exist (do not append a pobo entry yet).
+2. If the file contains a line matching `^pobo \| .* \| first-run-complete$`, this is **not** a first run — skip directly to the normal flow below ("Project vs initiative routing" onward).
+3. Otherwise (no entry, or `first-run-deferred`), run the first-run flow.
+
+The `--first-run` flag overrides detection and forces the flow to run again.
+
+### Intro
+
+Send one short message:
+
+> *"This is `/pobo` — a guided way to plan a project end to end, based on David Allen's Natural Planning Model. We'll do four steps: purpose, outcome, brainstorm, and organize. Before we start, I need one quick preference from you."*
+
+### Preference — project destination
+
+One question, one turn:
+
+> *"Where should I put projects you plan with `/pobo` by default? Common picks: `atlas/initiatives/` (the WorkDesk default), `atlas/projects/`, or somewhere else entirely. You can change this anytime."*
+
+Operator answers free-text. Validate:
+- If the answer is a path, accept and normalize (strip leading `/` and trailing `/`, lowercase the segment under `atlas/`).
+- If the answer is unclear, default to `atlas/initiatives/`.
+- If the operator says "skip" or "later," default to `atlas/initiatives/` and write `first-run-deferred` (next invocation re-asks).
+
+### Vault setup
+
+If the chosen destination directory does not exist under `<vault>/`, create it (just the directory — no `_brief.md` until pobo actually writes a project there).
+
+### Sidecar write
+
+Create or update `<vault>/_workdesk/state/skills/pobo.md`:
+
+```yaml
+---
+skill: pobo
+first-run-at: <iso-timestamp>
+default-destination: <chosen-path>
+---
+
+## Operator preferences
+
+Project destination: `<chosen-path>` for projects with no parent context.
+
+## Notes
+
+(Empty — pobo may append on subsequent runs.)
+```
+
+Use atomic write: temp file → validate frontmatter parses → `mv`.
+
+### Mark as run
+
+Append to `<vault>/_workdesk/state/skill-first-runs.md`:
+
+```
+pobo | <iso-timestamp> | first-run-complete
+```
+
+If the operator chose `skip`/`later`, write `first-run-deferred` instead. The next invocation will re-ask.
+
+### Continue to normal flow
+
+After the marker is written, transition into the normal pobo flow below. Read `_workdesk/state/skills/pobo.md` `default-destination` whenever the routing logic needs a default.
+
+---
 
 ## --lite mode
 
@@ -26,10 +96,12 @@ Vault-improvements proposes upgrading to full POBO if the lite project gains 3+ 
 
 ## Project vs initiative routing (full POBO)
 
-After brainstorm:
-- Bounded outcome AND multi-session AND parent (engagement OR area) → `atlas/initiatives/{slug}/`
-- Bounded outcome, multi-session, no parent → `gtd/projects/{slug}/`
-- Standing responsibility → not a POBO target; suggest `atlas/areas/` instance
+Default destination is read from `<vault>/_workdesk/state/skills/pobo.md` `default-destination` (set during first-run, see above). Operator can override per-project.
+
+After brainstorm, route by shape:
+- Bounded outcome AND multi-session AND parent context → `<default-destination>/{slug}/`
+- Bounded outcome, multi-session, no parent → `<default-destination>/{slug}/` or `gtd/projects/{slug}/` (operator picks)
+- Standing responsibility → not a POBO target; surface this and stop
 - Single-session → suggest action in `gtd/actions/next/` instead
 
 Promote only the **current physical next action** to `gtd/actions/next/`. Future steps stay in `plan.md`.
