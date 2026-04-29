@@ -77,6 +77,29 @@ for entry in "$TARGET"/*; do
   name="$(basename "$entry")"
   case "$name" in
     .obsidian|.DS_Store|.git|.gitignore) continue ;;
+    _workdesk)
+      # init.sh writes _workdesk/source/ and _workdesk/state/ before invoking
+      # bootstrap.sh. Both are init.sh-owned per the spec's ownership list.
+      # Tolerate the directory if it contains only those subdirs; reject if
+      # it contains anything else (e.g., a real prior install's _workdesk/
+      # tree with skills/, agents/, etc).
+      if [[ -d "$entry" ]]; then
+        for child in "$entry"/*; do
+          cname="$(basename "$child")"
+          case "$cname" in
+            source|state) continue ;;
+            *)
+              echo ""
+              echo "    This vault has existing content: _workdesk/$cname"
+              echo "    WorkDesk OS V1 only supports fresh installs."
+              echo "    Options: start a new vault, or wait for V2 migration."
+              exit 1
+              ;;
+          esac
+        done
+        continue
+      fi
+      ;;
     README.md)
       # Only OK if empty
       if [[ -s "$entry" ]]; then

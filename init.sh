@@ -298,13 +298,13 @@ step_vault_created() {
   fi
 
   # Canonicalize. cd-pwd-P resolves symlinks in parents and gets absolute path.
+  # We previously rejected any path whose canonical form differed from its
+  # logical form, but on macOS /tmp is a symlink to /private/tmp (and other
+  # system aliases exist), so that check misfired for any /tmp-rooted path.
+  # Direct symlinks at the vault path itself are rejected above via [[ -L ]].
+  # Ancestor symlinks resolve safely through canonicalization.
   if [[ -d "$VAULT_PATH" ]]; then
-    local canonical
-    canonical=$(cd "$VAULT_PATH" && pwd -P)
-    if [[ "$canonical" != "$(cd "$VAULT_PATH" && pwd)" ]]; then
-      fail "Vault path resolves through a symlink ($VAULT_PATH → $canonical)." "Use a real path."
-    fi
-    VAULT_PATH="$canonical"
+    VAULT_PATH=$(cd "$VAULT_PATH" && pwd -P)
   fi
 
   log_info "canonical: $VAULT_PATH"
