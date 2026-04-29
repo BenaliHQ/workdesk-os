@@ -73,15 +73,23 @@ Mark phase `complete`.
 
 ### 4. Tool setup
 
-Detect and verify optional connectors. For each:
+**Default: skip all tools.** Tools are never required to use WorkDesk. The operator can wire them up later via `/define-tool` when they have a use for one. Asking up front is overwhelming and almost always premature — Yvette's onboarding stalled on this exact step.
 
-- **Granola** — check `~/Library/Application Support/com.granola.app/` exists; smoke test = list folder
+**Closed list of tools onboarding may surface.** Onboarding considers exactly five optional CLI/local tools, all of which the operator must have already installed themselves on their machine:
+
+- **Granola** — local meeting-recorder data at `~/Library/Application Support/com.granola.app/`
 - **Google Workspace (`gws`)** — `command -v gws` + `gws auth status`
 - **qmd** — `command -v qmd` + `qmd status`
-- **Defuddle** — `command -v defuddle` + parse a known-good URL
+- **Defuddle** — `command -v defuddle`
 - **Codex CLI** — `command -v codex`
 
-For each: present, run smoke test, record result in `enabled-tools`. Missing tools never block — they degrade the signals that depend on them.
+**MCP servers, API connectors, and platform integrations (ClickUp, Slack, HubSpot, Canva, Apollo, Webflow, GitHub, Google Drive, etc.) are explicitly out of scope for this phase.** Do not enumerate them. Do not detect them. Do not propose wiring them. If an MCP server is loaded into the operator's Claude Code environment, do not surface it during onboarding. The operator configures integrations post-graduation via `/define-tool`, on demand, one at a time.
+
+**Flow:**
+
+1. Single prompt: *"Want to set up any local tools right now? Default is skip — you can add them later with `/define-tool` whenever you actually need one."*
+2. If operator says skip (or anything other than an explicit yes), record `enabled-tools: []` in `operator-profile.md`, mark phase `complete`, move on. No detection runs.
+3. If operator explicitly opts in, list the five names above. Operator picks zero or more by name. For each named tool: run the documented smoke test, record result in `enabled-tools`. Missing/failed tools never block — they degrade signals that depend on them.
 
 Mark phase `complete`.
 
