@@ -46,4 +46,4 @@ Detected and verified by `/onboarding` Phase 4. Missing tools never block — th
 
 ## first-30-days-mode
 
-`active` during the guided first 14 days. Flips to `graduated` once: onboarding complete + ≥1 weekly-review generated + at least one of (project, initiative, recurring item, processed transcript) exists.
+`active` during the guided first 14 days. Flips to `graduated` once: onboarding complete + ≥1 weekly-review generated + at least one of (project, recurring item, processed transcript) exists.

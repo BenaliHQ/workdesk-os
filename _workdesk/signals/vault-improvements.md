@@ -23,7 +23,7 @@ Spot patterns and gaps that no individual skill would catch. Propose declaration
 
 - `system/events/{YYYY-MM}.md` (current month + prior month — 7-30 day coverage)
 - Unused atlas folders (no writes in 30+ days)
-- Stale projects, stale initiatives, stale areas (`1.5 × expected-cadence` exceeded)
+- Stale projects, stale areas (`1.5 × expected-cadence` exceeded)
 - `gtd/inbox/` backlog (size + age)
 - Signals not opened (output files exist but operator never read them — check `last-touched`)
 - Signals firing on empty (output text < 200 chars repeatedly)
@@ -40,7 +40,7 @@ Spot patterns and gaps that no individual skill would catch. Propose declaration
 `intel/vault-improvements/{YYYY-MM-DD}-vault-improvements.md` + `[REVIEW]` inbox pointers for each recommendation. Body sections:
 
 1. **Cross-skill correction patterns** — corrections appearing in ≥2 skills' `learnings.md` within 30 days; propose promotion (per `claude-md-coevolution` rule)
-2. **Stale contexts** — projects/initiatives/areas exceeding their cadence
+2. **Stale contexts** — projects/areas exceeding their cadence
 3. **Broken-link scan** — wikilinks pointing nowhere; propose rewrites or deletions
 4. **Frontmatter health** — missing required fields
 5. **Inbox backlog** — size, age, prefix mix; suggest triage if >20

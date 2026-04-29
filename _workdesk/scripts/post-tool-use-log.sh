@@ -49,7 +49,6 @@ case "$tool" in
   Write)
     case "$path" in
       */gtd/projects/*/_brief.md)        event_class="project-created";    target="$path" ;;
-      */atlas/initiatives/*/_brief.md)   event_class="initiative-created"; target="$path" ;;
       */atlas/areas/*/_brief.md)         event_class="object-created";     target="$path" ;;
       */atlas/clients/*/_brief.md|\
       */atlas/businesses/*/_brief.md|\
@@ -107,7 +106,7 @@ case "$tool" in
     elif printf '%s' "$cmd" | grep -Eq '\bmv\b.*gtd/projects/.*gtd/archive/projects'; then
       event_class="object-archived"
       target=$(printf '%s' "$cmd" | grep -oE 'gtd/projects/[^ ]+' | head -1)
-    elif printf '%s' "$cmd" | grep -Eq '\bmv\b.*atlas/(initiatives|clients|businesses|areas|teams|labs|disciplines|collaborations|departments)/.*_archive'; then
+    elif printf '%s' "$cmd" | grep -Eq '\bmv\b.*atlas/(clients|businesses|areas|teams|labs|disciplines|collaborations|departments)/.*_archive'; then
       event_class="object-archived"
       target=$(printf '%s' "$cmd" | grep -oE 'atlas/[^ ]+' | head -1)
     fi

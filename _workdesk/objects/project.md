@@ -11,7 +11,7 @@ version: 1.0
 
 # Object Type: project
 
-Multi-session operator attention, no engagement parent. (Engagement-tied multi-session work is an `initiative` in `atlas/initiatives/`.) Bounded outcome OR personal-focus standing project.
+Multi-session operator attention. Bounded outcome with multiple steps; or a personal-focus standing project. Lives at `gtd/projects/{slug}/`.
 
 ## Folder structure (8-item, per per-project-accounting rule)
 

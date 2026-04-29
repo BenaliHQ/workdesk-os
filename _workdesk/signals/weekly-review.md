@@ -26,8 +26,6 @@ End-of-week (or start-of-week, depending on `operator-profile.week-start`) holis
 
 - `gtd/actions/next/` and `gtd/actions/waiting/` (status, last-touched)
 - `gtd/projects/*/_status.md`
-- `atlas/initiatives/*/_status.md`
-- `atlas/areas/*/_status.md`
 - `gtd/recurring/schedules/` (`status: active` AND `next_due <= today + 7d`)
 - `gtd/inbox/` (full backlog)
 - Stale contexts: `1.5 × expected-cadence` exceeded

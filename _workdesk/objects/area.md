@@ -11,7 +11,7 @@ version: 1.0
 
 # Object Type: area
 
-Standing responsibility that isn't relationship-shaped. Permanent until retired. Universal — every persona uses areas. Recurring maintenance for an area lives in `gtd/recurring/`, not as initiatives.
+Standing responsibility that isn't relationship-shaped. Permanent until retired. Universal — every persona uses areas. Recurring maintenance for an area lives in `gtd/recurring/`, not as projects.
 
 Examples by persona:
 - consultant: client-independent admin (finance, pipeline, health)

@@ -27,7 +27,7 @@ Five short videos — one per zone. Watch in order, or jump to any.
 | Zone | What | Who writes |
 |---|---|---|
 | `personal/` | Your space — daily notes, journal, reading | You only. Claude never writes here. |
-| `atlas/` | Managed objects — people, decisions, initiatives, meetings | Claude, from your input |
+| `atlas/` | Managed objects — people, decisions, meetings | Claude, from your input |
 | `GTD/` | Actions and projects (David Allen shape) | Claude, from your input |
 | `intel/` | Claude's observations — briefings, research, vault improvements | Claude, independently (lower trust) |
 | `system/` | Sources — transcripts, bookmarks, session logs, intake | Mostly automated |

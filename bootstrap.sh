@@ -176,8 +176,6 @@ mkdir -p \
   "$TARGET/atlas/meetings" \
   "$TARGET/atlas/decisions" \
   "$TARGET/atlas/people" \
-  "$TARGET/atlas/initiatives" \
-  "$TARGET/atlas/areas" \
   "$TARGET/gtd/inbox" \
   "$TARGET/gtd/actions/next" \
   "$TARGET/gtd/actions/waiting" \

@@ -20,8 +20,6 @@ Per `_workdesk/signals/weekly-review.md`:
 
 - `gtd/actions/next/` and `gtd/actions/waiting/` (status, last-touched)
 - `gtd/projects/*/_status.md` (active, expected-cadence vs last-touched)
-- `atlas/initiatives/*/_status.md`
-- `atlas/areas/*/_status.md`
 - `gtd/recurring/schedules/` filter `status: active` AND `next_due <= today + 7d`
 - `gtd/inbox/` (full backlog + age + prefix mix)
 - Stale contexts: `today - last-touched > 1.5 × expected-cadence` (skip `expected-cadence: none`)
@@ -32,9 +30,9 @@ Per `_workdesk/signals/weekly-review.md`:
 
 Build sections:
 
-1. **What you shipped** — completed actions in `gtd/archive/actions/{current-month}/`, archived projects/initiatives, decisions logged, content published
+1. **What you shipped** — completed actions in `gtd/archive/actions/{current-month}/`, archived projects, decisions logged, content published
 2. **What's stalled** — stale contexts, blocked actions (`waiting:` >7 days), inbox backlog
-3. **What's coming** — recurring items due in 7 days, calendar deadlines, time-sensitive initiatives
+3. **What's coming** — recurring items due in 7 days, calendar deadlines, time-sensitive projects
 4. **Proposed closures + promotions** — list each candidate with reasoning
 
 ### 3. Write
@@ -71,7 +69,7 @@ After successful write:
 If all three are true:
 - onboarding `phases.graduation: complete`
 - this is at least the first weekly-review
-- at least one of: project, initiative, recurring item, processed transcript exists
+- at least one of: project, recurring item, processed transcript exists
 
 Then update `_workdesk/operator-profile.md` `first-30-days-mode: graduated` and tell the operator: *"You've graduated from first-30-days. Vault-improvements activates in {X} days."*
 

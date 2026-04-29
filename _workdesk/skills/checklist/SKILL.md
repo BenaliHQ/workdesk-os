@@ -20,7 +20,7 @@ Read `gtd/recurring/checklists/{slug}.md`. Verify `status: active`. Read the bod
 
 ### 2. Decide parent for materialized actions
 
-Default: `parent: "[[gtd/recurring/checklists/{slug}]]"`. If the operator passes a specific engagement/initiative/area context, override.
+Default: `parent: "[[gtd/recurring/checklists/{slug}]]"`. If the operator passes a specific project context, override.
 
 ### 3. Materialize
 
