@@ -209,8 +209,7 @@ If operator picks pobo:
 
 If operator picks daily note:
 1. Mark phase 4 in-progress with `path: daily-note`.
-2. Create `personal/daily/{today}.md` from the template at `<vault>/config/templates/daily-note.md`. Substitute `{today}` with ISO date.
-3. Open the file in Obsidian via URI scheme: `obsidian://open?vault=<vault-name>&file=personal/daily/{today}`. If the URI launch fails (e.g., Obsidian not focused, terminal can't `open` URLs), fall back to printing the path and instructing the operator to click it in the file tree.
+2. **Do not write to `personal/`**. The daily note is created by Obsidian itself (via the vendored Periodic Notes plugin and the template at `config/templates/daily-note.md`). Open Obsidian to today's daily note via URI scheme: `obsidian://open?vault=<vault-name>&file=personal/daily/{today}` (substitute the ISO date). If the URI launch fails or Obsidian's daily-note plugin isn't configured, fall back to telling the operator: *"Open today's daily note in Obsidian — click the calendar icon in the sidebar, or press the daily-note hotkey. Periodic Notes will create it from the template."* Do not create the file from the skill.
 
 **Either path: graduation marker.**
 
@@ -242,7 +241,7 @@ After graduation:
 ## What NOT to do
 
 - Don't skip Phase 0. Doctor must self-run and self-fix. Never instruct the operator to run a separate command before continuing.
-- Don't write to `personal/` except the templated daily-note creation in Phase 4 Path B (the only sanctioned write).
+- Don't write, edit, or `Bash`-mutate any path under `personal/` — ever. Phase 4 Path B opens Obsidian to the daily note; Obsidian creates the file via Periodic Notes. There are no sanctioned writes to `personal/` from this skill.
 - Don't fabricate contexts or pre-fill answers from `~/.claude/CLAUDE.md`, env vars, vault path, or git config. Ask fresh.
 - Don't stack questions. One question per turn, period.
 - Don't dump baseline state ("atlas/ has X, Y, Z. Doctor green.") between turns.

@@ -16,18 +16,17 @@ Bootstrap is filesystem-only. Doctor proves runtime. Run after every bootstrap, 
 
 ## Phases
 
-### 1. PreToolUse personal-lock
+### 1. PreToolUse personal-lock (config inspection — never probe by writing)
 
-Probe the hook by attempting deniable operations against `personal/`:
+`personal/` is operator-only. The doctor MUST NOT attempt to write, edit, or mutate any path under `personal/` — even probes that expect denial. The lock is for the operator's data, not Claude's diagnostics. Verify by inspecting configuration instead:
 
-- Try `Write` to `personal/_doctor-probe.md` → must be denied
-- Try `Edit` to an existing file under `personal/` → must be denied (skip if no file exists)
-- Try `MultiEdit` to a path under `personal/` → must be denied
-- Try `Bash mv personal/_doctor-probe.md /tmp/` → must be denied
-- Try `Bash echo hi >> personal/test.md` → must be denied
-- Try `Bash tee personal/test.md` → must be denied
+1. Read `config/settings.json`. Confirm `hooks.PreToolUse` includes an entry whose matcher covers `Write`, `Edit`, `MultiEdit`, and `Bash`, and whose command points to `config/scripts/pre-tool-use-personal-lock.sh`.
+2. Confirm `config/scripts/pre-tool-use-personal-lock.sh` exists, is executable (`test -x`), and parses (`bash -n`).
+3. Read the hook script and confirm it pattern-matches paths under `personal/` in tool input (covers `Write`/`Edit`/`MultiEdit` `file_path`, and `Bash` commands targeting `personal/`).
 
-Each probe expects an explicit `permissionDecision: deny` from the hook. Record which probes passed.
+If all three pass, record `pre-tool-use-personal-lock: pass`. If any fails, record `pre-tool-use-personal-lock: fail` and name which check failed.
+
+Runtime correctness is demonstrated when the hook fires on real operator workflows — not by synthetic probes from the doctor.
 
 ### 2. PostToolUse semantic logging
 
@@ -53,7 +52,9 @@ Decide which raw session-log path is active. Procedure:
 
 ### 5. Hook latency
 
-Run `config/scripts/bench-hooks.sh`. Record p95 and the budget check. If p95 exceeds the 50ms budget, record it as a warning — do NOT fail the overall doctor run. Hook latency is a perf signal, not a correctness invariant; cold-cache first runs can exceed the budget without any user-visible problem.
+Run `config/scripts/bench-hooks.sh` (always — even when invoked silently from `/onboarding` Phase 0). Capture stdout and parse the `p95: NNms` line; record the integer milliseconds. If p95 exceeds the 50ms budget, record it as a warning — do NOT fail the overall doctor run. Hook latency is a perf signal, not a correctness invariant; cold-cache first runs can exceed the budget without any user-visible problem.
+
+Never write `unmeasured` to `hook-latency-p95-ms`. Either run the script and record a number, or record `fail` with the underlying error. Skipping is not acceptable.
 
 ### 6. Session-entry intake scan
 
@@ -66,11 +67,13 @@ Confirm `config/state/session-entry.md` reflects current `system/transcripts/`, 
 
 ## Output
 
-Write `config/state/doctor.md`:
+Write `config/state/doctor.md`. Always run all 6 phases — invocation from `/onboarding` Phase 0 means do not narrate, but does not mean skip checks.
+
+Compute the timestamp via `Bash date '+%Y-%m-%d %H:%M'` and use that exact string as `last-run:`. Never use placeholder strings like `session-start`, `today`, or `now`.
 
 ```yaml
 ---
-last-run: 2026-04-26 09:30
+last-run: 2026-04-30 09:30
 result: pass | fail | partial
 checks:
   pre-tool-use-personal-lock: pass | fail
@@ -91,4 +94,6 @@ Then summarize in chat:
 
 - Don't proceed past a fail. Failed runtime is the whole point of this skill.
 - Don't summarize without writing `config/state/doctor.md` — onboarding reads that file.
-- Don't run probes that mutate operator content. Use `_doctor-probe` files only and clean up after.
+- Don't write, edit, or `Bash`-mutate any path under `personal/` — ever, for any reason. The personal-lock is verified by config inspection (Phase 1), never by attempting writes that expect denial.
+- Don't skip phases when invoked from `/onboarding` Phase 0. Silent means no narration; all 6 phases still run.
+- Don't write placeholder strings to `last-run:`. Real timestamp via `date` only.
