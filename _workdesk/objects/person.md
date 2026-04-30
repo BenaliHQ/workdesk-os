@@ -19,8 +19,7 @@ A human you interact with. Accumulates evidence across meetings — every claim 
 type: person
 status: active
 role: ""                                                # short descriptor
-company: "[[atlas/companies/...]]"                     # optional wikilink
-engagement: "[[atlas/clients/...]]"                    # if tied to an engagement
+company: ""                                             # optional wikilink to a company note (atlas/companies/ if operator has defined that type)
 source: "[[atlas/meetings/2026-04-22-first-call]]"     # primary/initial source
 created: 2026-04-22
 last_updated: 2026-04-26

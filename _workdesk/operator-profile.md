@@ -1,49 +1,37 @@
 ---
 name: ""
-role-mix: []
-primary-contexts:
-  engagements: []
-  areas: []
-enabled-tools: []
-preferred-naming:
-  engagements: "kebab-case"
-  people: "first-last"
+role: ""
+work-mode: ""
 daily-planning-style: "morning"
 week-start: "monday"
 first-30-days-mode: active
 created: ""
 last_updated: ""
-version: 1.0
+version: 1.1
 ---
 
 # Operator Profile
 
-This file is populated by `/onboarding`. It captures the operator's role mix, active contexts, enabled tools, and preferences. Signals (daily-plan, weekly-review, vault-improvements) read this file to scope and tone their output.
+This file is populated by `/onboarding`. It captures the operator's role, work mode, areas of focus, and tools in use. Signals (daily-plan, weekly-review, vault-improvements) read this file to scope and tone their output.
 
 Edit directly, or run `/onboarding --update-profile` to walk through changes interactively.
 
-## Role mix
+## Role
 
-`role-mix` is an ordered list. Order matters for tonality — the first role drives daily-plan voice. A user can be `[consultant, founder, parent]` simultaneously.
+Free-text description of what the operator does — populated by Q2 in `/onboarding`. Examples are illustrative, not categorical. The `role:` and `work-mode:` frontmatter fields drive tonality choices in `/daily-ops`.
 
-Allowed values (extend via convention, not enforcement):
-- `consultant`
-- `founder`
-- `employee`
-- `researcher`
-- `creative`
-- `parent`
-- `personal`
+## Work mode
 
-## Primary contexts
+Free-text description of how the operator's days look (heavy meetings, deep-work, mixed, etc.) — populated by Q3 in `/onboarding`.
 
-- `engagements` — canonical `_brief.md` wikilinks to active engagement instances (clients, businesses, teams, labs, disciplines)
-- `areas` — canonical `_brief.md` wikilinks to active `atlas/areas/*` instances
+## Areas of focus
 
-## Enabled tools
+Durable areas the operator focuses on — domains (finance, ops, design), topics, or kinds of work. Populated by Q4 in `/onboarding`. Listed in the body, not in frontmatter.
 
-Detected and verified by `/onboarding` Phase 4. Missing tools never block — they just degrade signals that depend on them.
+## Tools in use
+
+Wikilinks to `_workdesk/tools/<slug>.md` for each tool the operator named in onboarding. New tools are added via `/define-tool`, which writes a tool note and updates this section. Tool notes track connection state separately (`connected: true|false`).
 
 ## first-30-days-mode
 
-`active` during the guided first 14 days. Flips to `graduated` once: onboarding complete + ≥1 weekly-review generated + at least one of (project, recurring item, processed transcript) exists.
+`active` during the guided first 14 days. Flips to `graduated` once: onboarding complete + ≥1 weekly-review generated + at least one of (project, recurring item, processed transcript) exists. Set by `/weekly-review` graduation check.

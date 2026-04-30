@@ -86,10 +86,6 @@ version: 1.0
 
 Only universal types (used across all personas) belong in `CLAUDE.md`. Type-specific or persona-specific types stay in `_workdesk/objects/`.
 
-## Update operator-profile.md
-
-If the new type is an engagement container, append to `primary-contexts.engagements` if the operator names instances during this run.
-
 ## Verify
 
 Test:

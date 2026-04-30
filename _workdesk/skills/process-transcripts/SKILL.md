@@ -23,8 +23,7 @@ Read the transcript file. Verify frontmatter has `processed: false`. If `process
 
 If the transcript matches any of:
 - title contains `[HIGH STAKES]`
-- attendees include external advisors (operator-tagged)
-- engagement is in operator-marked high-stakes list
+- frontmatter has `sensitive: true` (operator-tagged before processing)
 
 Pause and present the extraction plan: meeting note path, decisions to consider, people to update, action proposals. Operator confirms or redirects.
 
@@ -34,7 +33,7 @@ For routine transcripts, skip the checkpoint.
 
 `atlas/meetings/{YYYY-MM-DD}-{topic-slug}.md` per `_workdesk/objects/meeting.md`:
 
-- Frontmatter: type, date, attendees (wikilinks where person notes exist), transcript backlink, source, engagement (if any), created, last_updated
+- Frontmatter: type, date, attendees (wikilinks where person notes exist), transcript backlink, source, created, last_updated
 - Body: Discussion (with claim-level inline citations as needed), Decisions, Action items
 
 ### 4. Apply matching
@@ -45,7 +44,7 @@ Update each touched entity in the same pass:
   - ≥2 meetings within 30 days → propose `[REVIEW]` for person note creation
   - Single mention → use plain text, don't propose
 - **Decisions** — durable decisions get standalone `atlas/decisions/{date}-{slug}.md` notes (`[REVIEW]` proposals, subject to cap). Routine decisions stay inline on the meeting note.
-- **Action items** — propose `gtd/actions/next/` creations via `[REVIEW]` (with `parent:` resolved to the engagement, project, or area), subject to flood guard
+- **Action items** — propose `gtd/actions/next/` creations via `[REVIEW]`, subject to flood guard. If the meeting clearly belongs to a project, set `parent:` to the project (e.g. `gtd/projects/<slug>/`); otherwise leave unparented.
 
 ### 5. Flip source state
 
@@ -59,10 +58,10 @@ Hook fires `source-processed` and `object-created` events automatically. No manu
 
 ## Confidentiality
 
-If the engagement is a client, apply `client-confidentiality`:
-- Internal traceability stays
-- Any content draft proposed from this meeting must anonymize
-- Add a `[QUESTION]` if any insight is unusually identifiable
+If the meeting is operator-tagged sensitive (`sensitive: true` on the transcript frontmatter, or title contains `[CONFIDENTIAL]`), apply confidentiality conventions:
+- Internal traceability stays — meeting note links to transcript and people as usual
+- Any content draft proposed from this meeting must anonymize identifying details
+- Add a `[QUESTION]` if any insight is unusually identifiable and you're unsure whether it can be shared externally
 
 ## What NOT to do
 

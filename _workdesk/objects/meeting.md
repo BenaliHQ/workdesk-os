@@ -20,9 +20,9 @@ type: meeting
 status: active
 date: 2026-04-26
 attendees: ["[[atlas/people/martin-holland]]", "..."]
-transcript: "[[system/transcripts/2026-04-26-dudley-weekly]]"
-source: "[[system/transcripts/2026-04-26-dudley-weekly]]"
-engagement: "[[atlas/clients/dudley/_brief]]"           # optional, if engagement-tied
+transcript: "[[system/transcripts/2026-04-26-weekly-sync]]"
+source: "[[system/transcripts/2026-04-26-weekly-sync]]"
+sensitive: false                                        # set true to trigger confidentiality conventions
 created: 2026-04-26
 last_updated: 2026-04-26
 author: claude
@@ -48,4 +48,4 @@ When a meeting note is created:
 
 ## Confidentiality
 
-If the engagement is a client, the `client-confidentiality` rule applies — internal traceability stays, external-facing content (drafts published from this meeting) anonymizes.
+If `sensitive: true` is set on the meeting (or its source transcript), confidentiality conventions apply — internal traceability stays, external-facing content (drafts published from this meeting) anonymizes identifying details.

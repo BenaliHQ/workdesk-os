@@ -37,7 +37,7 @@ Body sections:
 ## Detection
 
 `[REVIEW]` proposal when:
-- A meeting note's "Decisions" section has an entry that merits standalone treatment (high-stakes, cross-engagement, framework-shaping)
+- A meeting note's "Decisions" section has an entry that merits standalone treatment (high-stakes, cross-project, framework-shaping)
 - Operator says "we decided X" in a session
 - Confidence ≥0.7
 

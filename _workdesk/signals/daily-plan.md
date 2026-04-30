@@ -19,13 +19,13 @@ Operator opens Claude Code in the morning (or whenever they start) and the daily
 ## Anchors
 
 Zones (read from vault):
-- today's calendar events (via `gws calendar +agenda --today` if `enabled-tools` includes `gws-calendar`)
+- today's calendar events (via `gws calendar +agenda --today` if a calendar tool is connected per `_workdesk/tools/`)
 - today's daily note (if exists; otherwise most recent in `personal/daily/`)
 - `gtd/inbox/` items (with backlog warning if >20 unresolved)
 - active `gtd/projects/*/_status.md` (status `active`, `last-touched` recent)
 - due `gtd/recurring/schedules/` items (`status: active` AND `next_due <= today`)
 
-Tools (try if `enabled-tools` lists them; degrade silently if not):
+Tools (try if connected per `_workdesk/tools/<slug>.md` `connected: true`; degrade silently if not):
 - `gws calendar` (today + next 3 days)
 - `gws gmail` (unread)
 
@@ -69,7 +69,7 @@ Body sections:
 3. Stalled items needing attention
 4. Inbox items awaiting triage
 
-Tonality respects `_workdesk/operator-profile.md` `role-mix[0]` and `first-30-days-mode`. During first-30-days-mode `active`, include short contextual guidance ("you have 3 active areas; weekly-review will surface stale ones").
+Tonality respects `_workdesk/operator-profile.md` `role`, `work-mode`, and `first-30-days-mode`. During `first-30-days-mode: active`, lean toward setup-oriented guidance ("you have 3 active areas; weekly-review will surface stale ones"). If `role` or `work-mode` is empty (early state), default to neutral.
 
 ## Schedule mechanism
 

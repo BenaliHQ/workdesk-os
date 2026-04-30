@@ -315,15 +315,9 @@ Before scaffolding, ask once:
 - **Yes** → 9-item structure (adds `repo/`)
 - **No** → 8-item structure
 
-### Step 2 — Ask: Where Should It Live?
+### Step 2 — Confirm the slug
 
-Propose a path based on business/client context that surfaced during the interview:
-
-- Personal / infrastructure → `~/khalils-vault/atlas/projects/{slug}/`
-- Business-owned → `~/khalils-vault/atlas/businesses/{biz}/projects/{slug}/`
-- Client-owned → `~/khalils-vault/atlas/clients/{client}/projects/{slug}/`
-
-Derive `{slug}` from the project name (kebab-case). Confirm the full path with the user before creating anything.
+All POBO projects land at `<vault>/gtd/projects/{slug}/`. There is no separate atlas-side project location; projects live in GTD. Derive `{slug}` from the project name (kebab-case) and confirm with the user before creating anything.
 
 ### Step 3 — Create the Structure
 

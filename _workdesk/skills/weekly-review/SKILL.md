@@ -22,7 +22,7 @@ Per `_workdesk/signals/weekly-review.md`:
 - `gtd/projects/*/_status.md` (active, expected-cadence vs last-touched)
 - `gtd/recurring/schedules/` filter `status: active` AND `next_due <= today + 7d`
 - `gtd/inbox/` (full backlog + age + prefix mix)
-- Stale contexts: `today - last-touched > 1.5 × expected-cadence` (skip `expected-cadence: none`)
+- Stale projects (`gtd/projects/*`) and stale recurring items (`gtd/recurring/*`): `today - last-touched > 1.5 × expected-cadence` (skip `expected-cadence: none`)
 - Last 7 days of `personal/daily/` (read only)
 - Processed transcripts since `weekly-review.last-fired`
 

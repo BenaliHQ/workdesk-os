@@ -33,7 +33,7 @@ Follow `_workdesk/signals/daily-plan.md`:
    - For each project referenced today, fetch `_status` + recent meetings
    - Surface stale work where `today - last-touched > 1.5 × expected-cadence`
 3. Apply sparse-data fallback chain (skip layers with no data)
-4. Apply tonality from `operator-profile.role-mix[0]` and `first-30-days-mode`
+4. Apply tonality from `operator-profile.role` and `operator-profile.work-mode`. If `first-30-days-mode: active`, lean toward setup-oriented framing; otherwise neutral. If either field is empty (early state), default to neutral.
 
 Write to `intel/briefings/daily/{YYYY-MM-DD}-daily-plan.md` with the signal frontmatter:
 

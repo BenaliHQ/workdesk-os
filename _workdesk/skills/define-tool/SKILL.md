@@ -1,6 +1,6 @@
 ---
 name: define-tool
-description: Meta-skill — scaffold a new tool integration (CLI binary, MCP server, or HTTP API) so Claude can use it. Installs it, writes a tool reference, registers it in the operator profile's enabled-tools, and verifies via smoke test.
+description: Meta-skill — scaffold a new tool integration (CLI binary, MCP server, or HTTP API) so Claude can use it. Installs it, writes a tool reference, updates the tool note at _workdesk/tools/<slug>.md (flips connected:true on smoke-test pass), and links it from the operator profile.
 ---
 
 # /define-tool
@@ -36,7 +36,7 @@ If install fails, document the manual steps and surface to operator.
 
 ## Scaffold
 
-Create `_workdesk/rules/tools/{name}.md` (matching the existing tool reference shape — see `_workdesk/rules/tools/obsidian-cli.md`):
+Create `_workdesk/rules/tools/{name}.md` (the tool reference doc — usage, commands, limitations):
 
 ```markdown
 # {Tool Name} — Tool Reference
@@ -70,19 +70,26 @@ Create `_workdesk/rules/tools/{name}.md` (matching the existing tool reference s
 {When Claude should propose using this tool proactively}
 ```
 
-## Update operator-profile.md
+## Update the tool note
 
-Append the tool name to `enabled-tools:` if smoke test passed.
+Onboarding may have already seeded `_workdesk/tools/<slug>.md` with `connected: false`. After install + smoke test, update that note:
+
+- Flip `connected: true` on the frontmatter
+- Fill in `## Connection notes` with how Claude reaches it (CLI path, MCP server name, env var name)
+- Add a new entry to the operator profile's `## Tools in use` section if not already linked
+
+If no seeded note exists (a new tool the operator never named in onboarding), create `_workdesk/tools/<slug>.md` with the same shape onboarding uses (`tool:`, `slug:`, `category:`, `class: operator-named`, `connected: true`, `added-on:` today, `connector:` resolved).
 
 ## Verify
 
 Run a smoke test command from the reference. On success, log the install via PostToolUse hook (which fires on the tool reference write — `declaration-changed` event).
 
-If smoke test fails, mark the tool as `pending` in `enabled-tools` with a comment explaining the failure.
+If smoke test fails, leave `connected: false` on the tool note and add a `## Connection notes` entry explaining what failed. The operator can retry via `/define-tool <name>` later.
 
 ## What NOT to do
 
 - Don't commit secrets. `.env` only, `.gitignore` enforced.
 - Don't write a tool reference for a tool that isn't installed and verified. Untested docs lie.
-- Don't define a tool that overlaps an existing one — check `_workdesk/rules/tools/` first.
+- Don't define a tool that overlaps an existing one — check `_workdesk/rules/tools/` and `_workdesk/tools/` first.
 - Don't skip the detection clause. A tool nobody knows when to use is dead weight.
+- Don't flip `connected: true` on the tool note before the smoke test passes. The connection state is the system's truth about whether Claude can actually reach the tool.

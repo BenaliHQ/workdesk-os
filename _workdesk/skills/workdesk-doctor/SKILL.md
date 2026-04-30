@@ -84,7 +84,7 @@ stop-fallback: enabled | disabled
 ```
 
 Then summarize in chat:
-- Pass: "Runtime health green. Onboarding can begin — run `/onboarding`."
+- Pass: "Runtime green." (One line. Don't suggest the next skill — `/onboarding` invokes doctor inline; standalone doctor runs are diagnostic, not handoffs.)
 - Fail: list each failed check with the exact repair command. Pause until operator reruns.
 
 ## What NOT to do

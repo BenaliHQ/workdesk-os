@@ -33,12 +33,10 @@ Body: one paragraph — what needs to happen and why. Outcomes-shaped, not vague
 One field, points to whatever owns the action. Allowed:
 
 - `[[gtd/projects/{slug}/_brief]]` — multi-session project
-- `[[atlas/areas/{slug}/_brief]]` — standing area
-- `[[atlas/clients/{slug}/_brief]]` (or any engagement type) — direct engagement
 - `[[gtd/recurring/schedules/{slug}]]` — promoted from recurring
 - empty string — standalone
 
-Claude dereferences the link to figure out the parent's type. No schema updates needed when new container types ship.
+If the operator has added other container types via `/define-object` (e.g. `atlas/areas/`, `atlas/clients/`), wikilinks to those `_brief` notes are also valid `parent:` values. Claude dereferences the link to figure out the parent's type — no schema updates needed when new container types ship.
 
 ## Lifecycle (status changes = file moves)
 
