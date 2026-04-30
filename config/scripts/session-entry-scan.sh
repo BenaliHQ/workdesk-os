@@ -70,6 +70,16 @@ if [[ -f "$SIGNALS_STATE" ]]; then
   fi
 fi
 
+# --- check for new release (cached 24h, network-tolerant, fail-silent) ----
+update_notice=""
+update_available="false"
+if [[ -x "$DIR/check-for-updates.sh" ]]; then
+  update_notice="$("$DIR/check-for-updates.sh" notice 2>/dev/null || true)"
+  if [[ -n "$update_notice" ]]; then
+    update_available="true"
+  fi
+fi
+
 # --- write state file -----------------------------------------------------
 mkdir -p "$(dirname "$STATE_FILE")"
 {
@@ -84,9 +94,14 @@ mkdir -p "$(dirname "$STATE_FILE")"
   for f in "${unsummarized[@]:-}"; do [[ -n "$f" ]] && echo "    - \"$f\""; done
   echo "due-signals:"
   for s in "${due_signals[@]:-}"; do [[ -n "$s" ]] && echo "  - $s"; done
+  echo "update-available: $update_available"
   echo "---"
   echo ""
   echo "# Session Entry Scan ($now)"
+  if [[ -n "$update_notice" ]]; then
+    echo ""
+    echo "$update_notice"
+  fi
 } > "$STATE_FILE"
 
 # --- emit additionalContext for Claude Code -------------------------------
@@ -98,6 +113,9 @@ if (( ${#due_signals[@]} > 0 )); then
   ctx+="Due signals: $(IFS=,; echo "${due_signals[*]}"). "
 else
   ctx+="No signals due. "
+fi
+if [[ -n "$update_notice" ]]; then
+  ctx+="$update_notice "
 fi
 ctx+="See config/state/session-entry.md for full state."
 
