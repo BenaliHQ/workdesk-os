@@ -2,3 +2,6 @@
 *.log
 node_modules/
 .workdesk-test-vaults/
+dist/
+.workdesk-backups/
+.workdesk-migrate-tmp/
