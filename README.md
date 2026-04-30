@@ -83,7 +83,7 @@ Then:
 
 The `config/` directory is the visible source of truth. Claude Code reads through `.claude/` (a symlink) for tool compatibility.
 
-Bootstrap also creates `config/defaults/` — a frozen snapshot of the V1 control plane as it shipped. Treat it as read-only. When V2 lands a `/migrate` skill, it 3-way merges `defaults/` (what shipped), `config/` (what you have now), and the V2 source — keeping your edits, applying V2 changes to untouched files, and flagging conflicts. Editing `defaults/` defeats the merge.
+Bootstrap also creates `config/defaults/` — a frozen snapshot of the control plane as it shipped. Treat it as read-only. The `/update` skill 3-way merges `defaults/` (what shipped), `config/` (what you have now), and each new release — keeping your edits, applying release changes to untouched files, and walking you through any conflicts. Editing `defaults/` defeats the merge.
 
 ## Extending
 

@@ -1,9 +1,9 @@
 ---
-name: migrate
+name: update
 description: Pulls the latest WorkDesk OS release and applies it to this vault — updates skills, rules, scripts, and schema. Walks you through any conflicts in plain language. Operator data (personal/, atlas/, gtd/, intel/, system/) is never touched.
 ---
 
-# /migrate
+# /update
 
 Updates the WorkDesk OS control plane (`config/`) to the latest release. Operator-facing skill — most users won't be technical, so Claude leads with plain-language narration. The bash engine (`config/scripts/migrate.sh`) owns invariants; this skill orchestrates the conversation.
 
@@ -11,7 +11,7 @@ Updates the WorkDesk OS control plane (`config/`) to the latest release. Operato
 
 - **Updates only `config/`** — your skills, rules, hooks, scripts, and the operator-profile schema. Never touches `personal/`, `atlas/`, `gtd/`, `intel/`, or `system/`.
 - **Schema migrations** may rewrite specific files inside `config/` (e.g. `operator-profile.md` frontmatter when fields are renamed). Each migration is a versioned, reviewable script shipped with the release.
-- **Backup is automatic** before any write, at `<vault>/.workdesk-backups/<timestamp>/`. Restore via `/migrate restore <id>` or by running `config/scripts/migrate.sh restore <id>`.
+- **Backup is automatic** before any write, at `<vault>/.workdesk-backups/<timestamp>/`. Restore via `/update restore <id>` or by running `config/scripts/migrate.sh restore <id>`.
 
 ## Phases
 
@@ -40,7 +40,7 @@ The plan JSON contains:
   "current_version": "1.2.0",
   "new_version":     "1.3.0",
   "staging":         "/path/to/extracted",
-  "migrations":      ["migrations/1.2.0-to-1.3.0-foo.sh"],
+  "migrations":      ["1.2.0-to-1.3.0-foo.sh"],
   "files": {
     "skills/daily-ops/SKILL.md": {"action": "clean-update"},
     ...
@@ -122,13 +122,13 @@ If the engine fails at any step, it auto-restores from the backup before exiting
 
 On success, tell the operator:
 
-> Updated to v1.3.0. Backed up your prior state to `.workdesk-backups/2026-04-30-143022/` (you can run `/migrate restore 2026-04-30-143022` to roll back). Restart Claude Code so the new skills load.
+> Updated to v1.3.0. Backed up your prior state to `.workdesk-backups/2026-04-30-143022/` (you can run `/update restore 2026-04-30-143022` to roll back). Restart Claude Code so the new skills load.
 
 Tell them to restart Claude Code — skills are loaded at session start. Without a restart, the new skill bodies won't be picked up.
 
 ## Restore subcommand
 
-If the operator says something like "undo that migration" or "go back to before the update":
+If the operator says something like "undo that update" or "go back to before the update":
 
 ```
 config/scripts/migrate.sh restore <backup-id>
