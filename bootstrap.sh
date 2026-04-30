@@ -46,8 +46,8 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SOURCE_WD="$SCRIPT_DIR/_workdesk"
-[[ -d "$SOURCE_WD" ]] || fail "_workdesk/ not found at $SOURCE_WD"
+SOURCE_WD="$SCRIPT_DIR/config"
+[[ -d "$SOURCE_WD" ]] || fail "config/ not found at $SOURCE_WD"
 
 # ============================================================================
 # 2. verify target vault is empty per the allow-list
@@ -77,11 +77,11 @@ for entry in "$TARGET"/*; do
   name="$(basename "$entry")"
   case "$name" in
     .obsidian|.DS_Store|.git|.gitignore) continue ;;
-    _workdesk)
-      # init.sh writes _workdesk/source/ and _workdesk/state/ before invoking
+    config)
+      # init.sh writes config/source/ and config/state/ before invoking
       # bootstrap.sh. Both are init.sh-owned per the spec's ownership list.
       # Tolerate the directory if it contains only those subdirs; reject if
-      # it contains anything else (e.g., a real prior install's _workdesk/
+      # it contains anything else (e.g., a real prior install's config/
       # tree with skills/, agents/, etc).
       if [[ -d "$entry" ]]; then
         for child in "$entry"/*; do
@@ -90,7 +90,7 @@ for entry in "$TARGET"/*; do
             source|state) continue ;;
             *)
               echo ""
-              echo "    This vault has existing content: _workdesk/$cname"
+              echo "    This vault has existing content: config/$cname"
               echo "    WorkDesk OS V1 only supports fresh installs."
               echo "    Options: start a new vault, or wait for V2 migration."
               exit 1
@@ -153,12 +153,12 @@ note "All required tools present."
 if (( DRY_RUN )); then
   step "Dry run — would install:"
   note "Five-zone skeleton: personal/ atlas/ gtd/ intel/ system/"
-  note "_workdesk/ control plane (skills, rules, declarations, scripts)"
-  note "_workdesk/defaults/ V1 baseline snapshot (for V2 3-way merge)"
-  note ".claude → _workdesk/ symlink"
+  note "config/ control plane (skills, rules, declarations, scripts)"
+  note "config/defaults/ V1 baseline snapshot (for V2 3-way merge)"
+  note ".claude → config/ symlink"
   note "gtd/inbox/$(date '+%Y-%m-%d')-welcome.md"
   note "system/events/$(date '+%Y-%m').md (bootstrap-install-completed)"
-  note "_workdesk/state/signals.json (vault-improvements suppressed 14 days)"
+  note "config/state/signals.json (vault-improvements suppressed 14 days)"
   echo ""
   echo "    $(c_green "✓") Dry run complete — no changes made."
   echo "    Re-run without --dry-run to install."
@@ -200,45 +200,45 @@ mkdir -p \
 note "Five zones in place: personal/ atlas/ gtd/ intel/ system/"
 
 # ============================================================================
-# 5. create _workdesk/ structure (real directory) + copy artifacts
+# 5. create config/ structure (real directory) + copy artifacts
 # ============================================================================
 
-step "Installing _workdesk/ control plane"
+step "Installing config/ control plane"
 
-mkdir -p "$TARGET/_workdesk"
-rsync -a "$SOURCE_WD/" "$TARGET/_workdesk/"
+mkdir -p "$TARGET/config"
+rsync -a "$SOURCE_WD/" "$TARGET/config/"
 
 # Snapshot the V1 baseline so V2 update can 3-way merge.
 #
-# _workdesk/defaults/ is a frozen copy of the V1 control plane as it
-# existed at install time. The user's own _workdesk/ may drift over
+# config/defaults/ is a frozen copy of the V1 control plane as it
+# existed at install time. The user's own config/ may drift over
 # time (custom rules, edited skills, new declarations). When V2 ships
 # a /migrate skill, it diffs three trees:
 #
 #   defaults/   — what shipped (this snapshot, never edited)
-#   _workdesk/  — what the user has now (their working copy)
+#   config/  — what the user has now (their working copy)
 #   v2 source   — what V2 ships
 #
 # The 3-way merge keeps user edits, applies V2 changes to untouched
 # files, and surfaces conflicts where both diverged from defaults/.
 # Excludes: defaults itself (no recursive snapshot), snapshots/ and
 # state/ (mutable runtime, not part of the V1 contract).
-mkdir -p "$TARGET/_workdesk/defaults"
+mkdir -p "$TARGET/config/defaults"
 rsync -a --delete \
   --exclude=defaults \
   --exclude=snapshots \
   --exclude=state \
-  "$SOURCE_WD/" "$TARGET/_workdesk/defaults/"
+  "$SOURCE_WD/" "$TARGET/config/defaults/"
 
-mkdir -p "$TARGET/_workdesk/snapshots"
+mkdir -p "$TARGET/config/snapshots"
 
 # Fix permissions on hook scripts.
-chmod +x "$TARGET/_workdesk/scripts/"*.sh 2>/dev/null || warn "chmod on hook scripts failed"
+chmod +x "$TARGET/config/scripts/"*.sh 2>/dev/null || warn "chmod on hook scripts failed"
 
-note "_workdesk/ installed (skills, rules, declarations, scripts, defaults)"
+note "config/ installed (skills, rules, declarations, scripts, defaults)"
 
 # ============================================================================
-# 6. .claude symlink → _workdesk
+# 6. .claude symlink → config
 # ============================================================================
 
 step "Creating .claude symlink"
@@ -248,8 +248,8 @@ if [[ -e .claude && ! -L .claude ]]; then
   fail ".claude exists and is not a symlink — refusing to overwrite"
 fi
 [[ -L .claude ]] && rm .claude
-ln -s _workdesk .claude
-note ".claude → _workdesk/"
+ln -s config .claude
+note ".claude → config/"
 cd - >/dev/null
 
 # ============================================================================
@@ -291,7 +291,7 @@ printf "%s | bootstrap-install-completed | %s | ok\n" "$(date '+%Y-%m-%d %H:%M')
 
 # Also seed signals.json suppression date (today + 14 days for vault-improvements).
 SUPPRESS_UNTIL=$(date -j -v+14d '+%Y-%m-%d' 2>/dev/null || date -d '+14 days' '+%Y-%m-%d')
-SIGNALS_JSON="$TARGET/_workdesk/state/signals.json"
+SIGNALS_JSON="$TARGET/config/state/signals.json"
 mkdir -p "$(dirname "$SIGNALS_JSON")"
 cat > "$SIGNALS_JSON" <<EOF
 {
@@ -315,16 +315,16 @@ check_file() { [[ -f "$1" ]] || { warn "missing file: $1"; errs=$((errs+1)); }; 
 check_exec() { [[ -x "$1" ]] || { warn "not executable: $1"; errs=$((errs+1)); }; }
 
 # Required directories
-for d in personal atlas gtd intel system _workdesk; do check_dir "$TARGET/$d"; done
+for d in personal atlas gtd intel system config; do check_dir "$TARGET/$d"; done
 
 # settings.json valid JSON + hook schema (shape and command paths)
-if ! /usr/bin/plutil -convert json -o /dev/null "$TARGET/_workdesk/settings.json" 2>/dev/null; then
-  warn "_workdesk/settings.json is not valid JSON"; errs=$((errs+1))
+if ! /usr/bin/plutil -convert json -o /dev/null "$TARGET/config/settings.json" 2>/dev/null; then
+  warn "config/settings.json is not valid JSON"; errs=$((errs+1))
 else
   schema_errs=$(TARGET="$TARGET" /usr/bin/python3 - <<'PY'
 import json, os, sys
 target = os.environ["TARGET"]
-path = f"{target}/_workdesk/settings.json"
+path = f"{target}/config/settings.json"
 with open(path) as f:
     cfg = json.load(f)
 errs = []
@@ -364,7 +364,7 @@ fi
 
 # Hook scripts executable
 for s in json-get pre-tool-use-personal-lock post-tool-use-log session-entry-scan session-end-session-dump stop-session-snapshot bench-hooks; do
-  check_exec "$TARGET/_workdesk/scripts/$s.sh"
+  check_exec "$TARGET/config/scripts/$s.sh"
 done
 
 # .claude symlink resolves
@@ -382,7 +382,7 @@ fi
 
 # Verify json-get.sh works without jq
 test_payload='{"tool_name":"Write","tool_input":{"file_path":"/tmp/x.md"}}'
-got=$(printf '%s' "$test_payload" | "$TARGET/_workdesk/scripts/json-get.sh" tool_name 2>/dev/null || true)
+got=$(printf '%s' "$test_payload" | "$TARGET/config/scripts/json-get.sh" tool_name 2>/dev/null || true)
 if [[ "$got" != "Write" ]]; then
   warn "json-get.sh failed to extract a known field (got: '$got')"
   errs=$((errs+1))
@@ -393,8 +393,8 @@ if (( errs > 0 )); then
   echo "    $(c_red "Bootstrap incomplete:") $errs check(s) failed."
   echo "    Review the warnings above. Common fixes:"
   echo "      - Ensure the source repo is intact (re-clone if needed)"
-  echo "      - chmod +x $TARGET/_workdesk/scripts/*.sh"
-  echo "      - Re-create .claude symlink: cd $TARGET && rm .claude && ln -s _workdesk .claude"
+  echo "      - chmod +x $TARGET/config/scripts/*.sh"
+  echo "      - Re-create .claude symlink: cd $TARGET && rm .claude && ln -s config .claude"
   exit 1
 fi
 

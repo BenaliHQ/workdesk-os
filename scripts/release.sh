@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # release.sh — build and publish a WorkDesk OS release.
 #
-# Reads version from _workdesk/VERSION, builds a tarball with this layout:
+# Reads version from config/VERSION, builds a tarball with this layout:
 #
-#   workdesk/        (snapshot of _workdesk/, excluding defaults/, state/, snapshots/)
+#   workdesk/        (snapshot of config/, excluding defaults/, state/, snapshots/)
 #   manifest.json    ({"version": "1.3.0", "migrations": ["script.sh", ...]})
 #   migrations/      (the actual scripts, copied from repo migrations/ dir)
 #
@@ -30,15 +30,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -f "_workdesk/VERSION" ]] || { echo "Missing _workdesk/VERSION" >&2; exit 1; }
-VERSION="$(head -n 1 _workdesk/VERSION | tr -d '[:space:]')"
+[[ -f "config/VERSION" ]] || { echo "Missing config/VERSION" >&2; exit 1; }
+VERSION="$(head -n 1 config/VERSION | tr -d '[:space:]')"
 TAG="v$VERSION"
 TARBALL_NAME="workdesk-os-${VERSION}.tar.gz"
 
 if (( DRY_RUN == 0 )); then
   command -v gh >/dev/null || { echo "gh CLI required" >&2; exit 1; }
   if gh release view "$TAG" >/dev/null 2>&1; then
-    echo "Release $TAG already exists. Bump _workdesk/VERSION first." >&2
+    echo "Release $TAG already exists. Bump config/VERSION first." >&2
     exit 1
   fi
 fi
@@ -49,13 +49,13 @@ trap 'rm -rf "$STAGE"' EXIT
 
 mkdir -p "$STAGE/workdesk"
 
-# Copy _workdesk/ into staging, excluding what shouldn't ship.
+# Copy config/ into staging, excluding what shouldn't ship.
 rsync -a \
   --exclude='defaults/' \
   --exclude='state/' \
   --exclude='snapshots/' \
   --exclude='.DS_Store' \
-  _workdesk/ "$STAGE/workdesk/"
+  config/ "$STAGE/workdesk/"
 
 # Migrations: if migrations/ exists at repo root, copy and list scripts in
 # lexicographic order. Manifest is JSON so the runtime has one structured

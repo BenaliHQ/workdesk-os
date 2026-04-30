@@ -76,14 +76,14 @@ Then:
 | Layer | What | Where |
 |---|---|---|
 | **Vault content** | Your work | `personal/` `atlas/` `gtd/` `intel/` `system/` |
-| **Control plane** | Declarations, scripts, hooks | `_workdesk/` (visible) + `.claude` (symlink) |
-| **Skills** | Workflow entry points | `_workdesk/skills/` |
-| **Rules** | Hard constraints | `_workdesk/rules/` |
-| **Declarations** | Object/signal/source/practice/tool definitions | `_workdesk/{objects,signals,sources,practices,tools}/` |
+| **Control plane** | Declarations, scripts, hooks | `config/` (visible) + `.claude` (symlink) |
+| **Skills** | Workflow entry points | `config/skills/` |
+| **Rules** | Hard constraints | `config/rules/` |
+| **Declarations** | Object/signal/source/practice/tool definitions | `config/{objects,signals,sources,practices,tools}/` |
 
-The `_workdesk/` directory is the visible source of truth. Claude Code reads through `.claude/` (a symlink) for tool compatibility.
+The `config/` directory is the visible source of truth. Claude Code reads through `.claude/` (a symlink) for tool compatibility.
 
-Bootstrap also creates `_workdesk/defaults/` — a frozen snapshot of the V1 control plane as it shipped. Treat it as read-only. When V2 lands a `/migrate` skill, it 3-way merges `defaults/` (what shipped), `_workdesk/` (what you have now), and the V2 source — keeping your edits, applying V2 changes to untouched files, and flagging conflicts. Editing `defaults/` defeats the merge.
+Bootstrap also creates `config/defaults/` — a frozen snapshot of the V1 control plane as it shipped. Treat it as read-only. When V2 lands a `/migrate` skill, it 3-way merges `defaults/` (what shipped), `config/` (what you have now), and the V2 source — keeping your edits, applying V2 changes to untouched files, and flagging conflicts. Editing `defaults/` defeats the merge.
 
 ## Extending
 

@@ -311,9 +311,9 @@ step_vault_created() {
 
   # Set up state + log paths now that vault exists.
   if [[ -z "$DRY_RUN" ]]; then
-    mkdir -p "$VAULT_PATH/_workdesk/state"
-    STATE_FILE="$VAULT_PATH/_workdesk/state/install.md"
-    INSTALL_LOG="$VAULT_PATH/_workdesk/state/install.log"
+    mkdir -p "$VAULT_PATH/config/state"
+    STATE_FILE="$VAULT_PATH/config/state/install.md"
+    INSTALL_LOG="$VAULT_PATH/config/state/install.log"
     touch "$STATE_FILE" "$INSTALL_LOG"
   fi
 
@@ -329,7 +329,7 @@ TARBALL_SHA=""
 step_repo_fetched() {
   log_step "repo-fetched at ref=$REF"
 
-  local source_root="$VAULT_PATH/_workdesk/source"
+  local source_root="$VAULT_PATH/config/source"
   local tarball_url="https://github.com/$REPO_OWNER/$REPO_NAME/archive/refs/tags/${REF}.tar.gz"
   # If REF doesn't look like a tag (e.g., main, a branch), use the heads/ URL.
   if [[ ! "$REF" =~ ^v?[0-9] ]]; then
@@ -418,7 +418,7 @@ step_bootstrap_ran() {
   log_step "bootstrap-ran"
 
   if state_marked "bootstrap-ran" \
-    && [[ -d "$VAULT_PATH/_workdesk" && -f "$VAULT_PATH/.claude/settings.json" && -d "$VAULT_PATH/.obsidian" ]]; then
+    && [[ -d "$VAULT_PATH/config" && -f "$VAULT_PATH/.claude/settings.json" && -d "$VAULT_PATH/.obsidian" ]]; then
     log_info "already complete"
     return 0
   fi
@@ -704,7 +704,7 @@ step_install_complete() {
   log_step "install-complete (re-validating all artifacts)"
 
   # Re-check every prior step's artifacts at the moment of marker write.
-  [[ -d "$VAULT_PATH/_workdesk" ]] || fail "_workdesk/ missing" "Re-run init.sh."
+  [[ -d "$VAULT_PATH/config" ]] || fail "config/ missing" "Re-run init.sh."
   [[ -f "$VAULT_PATH/.claude/settings.json" ]] || fail ".claude/settings.json missing" "Re-run init.sh."
   for id in "${PLUGIN_IDS[@]}"; do
     [[ -f "$VAULT_PATH/.obsidian/plugins/$id/manifest.json" ]] \

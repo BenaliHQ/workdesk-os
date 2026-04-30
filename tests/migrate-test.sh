@@ -22,13 +22,13 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENGINE="$REPO_ROOT/_workdesk/scripts/migrate.sh"
+ENGINE="$REPO_ROOT/config/scripts/migrate.sh"
 
 TEST_ROOT="$(mktemp -d -t migrate-test.XXXXXX)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
 VAULT="$TEST_ROOT/vault"
-WD="$VAULT/_workdesk"
+WD="$VAULT/config"
 DEFAULTS="$WD/defaults"
 
 PASS=0

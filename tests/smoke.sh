@@ -28,12 +28,12 @@ printf '== bootstrap fresh vault ==\n'
 "$repo_root/bootstrap.sh" "$vault" >/tmp/workdesk-smoke-bootstrap.out
 
 required_paths=(
-  "$vault/_workdesk/settings.json"
-  "$vault/_workdesk/scripts/pre-tool-use-personal-lock.sh"
-  "$vault/_workdesk/scripts/post-tool-use-log.sh"
-  "$vault/_workdesk/skills/workdesk-doctor/SKILL.md"
-  "$vault/_workdesk/signals/daily-plan.md"
-  "$vault/_workdesk/agents/orchestrator.md"
+  "$vault/config/settings.json"
+  "$vault/config/scripts/pre-tool-use-personal-lock.sh"
+  "$vault/config/scripts/post-tool-use-log.sh"
+  "$vault/config/skills/workdesk-doctor/SKILL.md"
+  "$vault/config/signals/daily-plan.md"
+  "$vault/config/agents/orchestrator.md"
   "$vault/personal/daily"
   "$vault/atlas/areas"
   "$vault/gtd/recurring/schedules"
@@ -46,13 +46,13 @@ for path in "${required_paths[@]}"; do
 done
 
 [[ -L "$vault/.claude" ]] || { printf '.claude symlink missing\n' >&2; exit 1; }
-/usr/bin/plutil -extract hooks raw -o - "$vault/_workdesk/settings.json" >/dev/null
+/usr/bin/plutil -extract hooks raw -o - "$vault/config/settings.json" >/dev/null
 
 printf '== personal lock direct probe ==\n'
 # This repo's lock uses the JSON permissionDecision contract: always exits 0,
 # emits {"hookSpecificOutput":{"permissionDecision":"deny",...}} on stdout.
 lock_json='{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"'"$vault"'","tool_input":{"command":"touch personal/daily/x.md"}}'
-printf '%s' "$lock_json" | "$vault/_workdesk/scripts/pre-tool-use-personal-lock.sh" \
+printf '%s' "$lock_json" | "$vault/config/scripts/pre-tool-use-personal-lock.sh" \
   >/tmp/workdesk-smoke-lock.out 2>/tmp/workdesk-smoke-lock.err
 /usr/bin/grep -q '"permissionDecision":"deny"' /tmp/workdesk-smoke-lock.out || {
   printf 'expected personal lock to deny Bash mutation; got: %s\n' "$(cat /tmp/workdesk-smoke-lock.out)" >&2
@@ -61,7 +61,7 @@ printf '%s' "$lock_json" | "$vault/_workdesk/scripts/pre-tool-use-personal-lock.
 
 # Read-only Bash on personal/ should be allowed (no deny output).
 read_json='{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"'"$vault"'","tool_input":{"command":"ls personal/"}}'
-printf '%s' "$read_json" | "$vault/_workdesk/scripts/pre-tool-use-personal-lock.sh" \
+printf '%s' "$read_json" | "$vault/config/scripts/pre-tool-use-personal-lock.sh" \
   >/tmp/workdesk-smoke-lock-read.out 2>/dev/null
 if /usr/bin/grep -q '"permissionDecision":"deny"' /tmp/workdesk-smoke-lock-read.out; then
   printf 'read-only Bash on personal/ should not be denied\n' >&2
@@ -70,7 +70,7 @@ fi
 
 printf '== event log direct probe ==\n'
 event_json='{"hook_event_name":"PostToolUse","tool_name":"Write","cwd":"'"$vault"'","tool_input":{"file_path":"'"$vault"'/atlas/people/jane-doe.md"}}'
-printf '%s' "$event_json" | "$vault/_workdesk/scripts/post-tool-use-log.sh"
+printf '%s' "$event_json" | "$vault/config/scripts/post-tool-use-log.sh"
 events_file="$vault/system/events/$(date +%Y-%m).md"
 [[ -f "$events_file" ]] || { printf 'event log file missing: %s\n' "$events_file" >&2; exit 1; }
 /usr/bin/grep -q 'object-created' "$events_file"
@@ -89,13 +89,13 @@ fi
 
 printf '== json-get extracts known field ==\n'
 got=$(printf '{"tool_name":"Write","tool_input":{"file_path":"/tmp/x.md"}}' \
-  | "$vault/_workdesk/scripts/json-get.sh" tool_name)
+  | "$vault/config/scripts/json-get.sh" tool_name)
 [[ "$got" == "Write" ]] || { printf 'json-get returned %q (expected Write)\n' "$got" >&2; exit 1; }
 
 printf '== bench-hooks runs and exits 0 ==\n'
 # Latency budget violations are a warning, not a failure (per doctor SKILL.md
 # Phase 5). The bench script must always exit 0 so the doctor stays pass.
-CLAUDE_PROJECT_DIR="$vault" "$vault/_workdesk/scripts/bench-hooks.sh" \
+CLAUDE_PROJECT_DIR="$vault" "$vault/config/scripts/bench-hooks.sh" \
   >/tmp/workdesk-smoke-bench.out
 
 printf 'smoke passed\n'
