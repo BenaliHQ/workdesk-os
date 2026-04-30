@@ -22,10 +22,10 @@ Read the transcript file. Verify frontmatter has `processed: false`. If `process
 ### 2. Mid-ingest checkpoint (high-stakes only)
 
 If the transcript matches any of:
-- title contains `[HIGH STAKES]`
-- frontmatter has `sensitive: true` (operator-tagged before processing)
+- title contains `[HIGH STAKES]` or `[CONFIDENTIAL]`
+- operator flagged it ahead of time (e.g. via inbox `[REVIEW]` or session instruction)
 
-Pause and present the extraction plan: meeting note path, decisions to consider, people to update, action proposals. Operator confirms or redirects.
+Pause and present the extraction plan: meeting note path, decisions to consider, people to update, action proposals. Operator confirms or redirects. If the trigger is `[CONFIDENTIAL]` (or operator tells you the meeting is sensitive at the checkpoint), set `sensitive: true` on the resulting meeting note's frontmatter so confidentiality conventions apply downstream.
 
 For routine transcripts, skip the checkpoint.
 
@@ -44,7 +44,7 @@ Update each touched entity in the same pass:
   - ≥2 meetings within 30 days → propose `[REVIEW]` for person note creation
   - Single mention → use plain text, don't propose
 - **Decisions** — durable decisions get standalone `atlas/decisions/{date}-{slug}.md` notes (`[REVIEW]` proposals, subject to cap). Routine decisions stay inline on the meeting note.
-- **Action items** — propose `gtd/actions/next/` creations via `[REVIEW]`, subject to flood guard. If the meeting clearly belongs to a project, set `parent:` to the project (e.g. `gtd/projects/<slug>/`); otherwise leave unparented.
+- **Action items** — propose `gtd/actions/next/` creations via `[REVIEW]`, subject to flood guard. If the meeting clearly belongs to a project, set `parent:` to that project's brief (e.g. `[[gtd/projects/<slug>/_brief]]`) per `_workdesk/objects/action.md`; otherwise leave `parent:` empty.
 
 ### 5. Flip source state
 
@@ -58,7 +58,7 @@ Hook fires `source-processed` and `object-created` events automatically. No manu
 
 ## Confidentiality
 
-If the meeting is operator-tagged sensitive (`sensitive: true` on the transcript frontmatter, or title contains `[CONFIDENTIAL]`), apply confidentiality conventions:
+If the meeting note carries `sensitive: true` (set in step 2 above), apply confidentiality conventions:
 - Internal traceability stays — meeting note links to transcript and people as usual
 - Any content draft proposed from this meeting must anonymize identifying details
 - Add a `[QUESTION]` if any insight is unusually identifiable and you're unsure whether it can be shared externally

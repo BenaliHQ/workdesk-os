@@ -69,7 +69,7 @@ Body sections:
 3. Stalled items needing attention
 4. Inbox items awaiting triage
 
-Tonality respects `_workdesk/operator-profile.md` `role`, `work-mode`, and `first-30-days-mode`. During `first-30-days-mode: active`, lean toward setup-oriented guidance ("you have 3 active areas; weekly-review will surface stale ones"). If `role` or `work-mode` is empty (early state), default to neutral.
+Tonality respects `_workdesk/operator-profile.md` `role`, `work-mode`, and `first-30-days-mode`. During `first-30-days-mode: active`, lean toward setup-oriented guidance ("you have 2 active projects; weekly-review will surface stale ones"). If `role` or `work-mode` is empty (early state), default to neutral.
 
 ## Schedule mechanism
 

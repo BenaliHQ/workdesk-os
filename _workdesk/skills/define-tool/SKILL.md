@@ -34,7 +34,29 @@ Pick install method based on tool type:
 
 If install fails, document the manual steps and surface to operator.
 
-## Scaffold
+## Seed the tool note (pre-verification)
+
+If `_workdesk/tools/<slug>.md` doesn't already exist (operator may have named the tool in onboarding, in which case it's seeded), create it now with `connected: false`:
+
+```yaml
+---
+tool: {Tool Name}
+slug: {kebab-slug}
+category: {comms | meetings | crm | ...}
+class: operator-named
+connected: false
+added-on: {today}
+connector: unknown
+---
+```
+
+The note's body has stub `## What it is`, `## Best practices`, `## Connection notes`, `## Linked use cases` sections. This tracks the tool exists even if smoke verification fails.
+
+## Verify
+
+Run a smoke test command appropriate to the tool. On pass, continue to scaffold. On fail, append to the tool note's `## Connection notes` what failed (one short paragraph), leave `connected: false`, and stop — do not write the tool reference doc. The operator can retry via `/define-tool <name>` later.
+
+## Scaffold the reference (only on smoke pass)
 
 Create `_workdesk/rules/tools/{name}.md` (the tool reference doc — usage, commands, limitations):
 
@@ -70,21 +92,15 @@ Create `_workdesk/rules/tools/{name}.md` (the tool reference doc — usage, comm
 {When Claude should propose using this tool proactively}
 ```
 
-## Update the tool note
+## Flip the tool note connected
 
-Onboarding may have already seeded `_workdesk/tools/<slug>.md` with `connected: false`. After install + smoke test, update that note:
+After the reference is written:
 
-- Flip `connected: true` on the frontmatter
+- Flip `connected: true` on `_workdesk/tools/<slug>.md` frontmatter
 - Fill in `## Connection notes` with how Claude reaches it (CLI path, MCP server name, env var name)
-- Add a new entry to the operator profile's `## Tools in use` section if not already linked
+- Link the tool note from the operator profile's `## Tools in use` section if not already linked
 
-If no seeded note exists (a new tool the operator never named in onboarding), create `_workdesk/tools/<slug>.md` with the same shape onboarding uses (`tool:`, `slug:`, `category:`, `class: operator-named`, `connected: true`, `added-on:` today, `connector:` resolved).
-
-## Verify
-
-Run a smoke test command from the reference. On success, log the install via PostToolUse hook (which fires on the tool reference write — `declaration-changed` event).
-
-If smoke test fails, leave `connected: false` on the tool note and add a `## Connection notes` entry explaining what failed. The operator can retry via `/define-tool <name>` later.
+The PostToolUse hook fires `declaration-changed` on the reference write — install is now logged.
 
 ## What NOT to do
 
