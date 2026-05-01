@@ -172,7 +172,7 @@ trap release_lock EXIT INT TERM HUP
 
 stale_reclaim_done=0
 acquired=0
-for attempt in 1 2 3 4; do
+for _ in 1 2 3 4; do
   if mkdir "$LOCK_DIR" 2>/dev/null; then
     LOCK_HELD=1
     acquired=1

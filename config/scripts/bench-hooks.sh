@@ -31,7 +31,7 @@ export CLAUDE_PROJECT_DIR="$SCRATCH"
 payload='{"tool_name":"Write","tool_input":{"file_path":"'"$SCRATCH"'/atlas/meetings/bench-test.md"}}'
 
 times=()
-for i in $(seq 1 50); do
+for _ in $(seq 1 50); do
   start=$(/usr/bin/python3 -c 'import time;print(int(time.time()*1000000))')
   printf '%s' "$payload" | "$HOOK" >/dev/null 2>&1 || true
   end=$(/usr/bin/python3 -c 'import time;print(int(time.time()*1000000))')

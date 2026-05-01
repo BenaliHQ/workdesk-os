@@ -1,0 +1,114 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  shell-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y shellcheck
+
+      - name: bash -n on every config/scripts/*.sh
+        run: |
+          set -e
+          for f in config/scripts/*.sh; do
+            echo "== bash -n $f =="
+            bash -n "$f"
+          done
+
+      - name: bash -n on top-level + tests
+        run: |
+          set -e
+          for f in bootstrap.sh init.sh tests/*.sh scripts/*.sh; do
+            [ -f "$f" ] || continue
+            echo "== bash -n $f =="
+            bash -n "$f"
+          done
+
+      - name: ShellCheck on hook scripts
+        run: |
+          # SC1091 (sourced files), SC2155 (declare-and-assign masking
+          # return) are tolerated — they're either intentional or
+          # already audited. Everything else is fail-on-warn.
+          # SC1091 — sourced files not followed (intentional, paths are
+          #          dynamic).
+          # SC2155 — declare-and-assign masking return; pre-existing
+          #          pattern, audited.
+          # SC2034 — "appears unused": triggers on env-exported vars +
+          #          intentional documentation arrays (e.g.
+          #          bootstrap.sh's `allowed`).
+          # SC2206/SC2207 — pure-bash dotted-version array splitting in
+          #          init.sh's version_ge() — intentional. Refactoring
+          #          to mapfile would change semantics.
+          shellcheck \
+            --severity=warning \
+            --exclude=SC1091,SC2155,SC2034,SC2206,SC2207 \
+            config/scripts/*.sh \
+            bootstrap.sh \
+            init.sh \
+            tests/*.sh \
+            scripts/*.sh
+
+  settings-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate config/settings.json (JSON parse)
+        run: |
+          python3 -c "import json; json.load(open('config/settings.json'))"
+
+      - name: Validate config/settings.json hook schema + paths
+        run: |
+          python3 - <<'PY'
+          import json, os, shlex, sys
+          target = os.environ.get('GITHUB_WORKSPACE', os.getcwd())
+          path = f"{target}/config/settings.json"
+          with open(path) as f:
+              cfg = json.load(f)
+          errs = []
+          hooks = cfg.get('hooks')
+          if not isinstance(hooks, dict):
+              errs.append('"hooks" must be an object')
+          else:
+              for event, entries in hooks.items():
+                  if not isinstance(entries, list):
+                      errs.append(f'hooks.{event}: must be an array'); continue
+                  for i, entry in enumerate(entries):
+                      inner = entry.get('hooks') if isinstance(entry, dict) else None
+                      if not isinstance(inner, list):
+                          errs.append(f'hooks.{event}[{i}].hooks: must be an array'); continue
+                      for j, h in enumerate(inner):
+                          if not isinstance(h, dict):
+                              errs.append(f'hooks.{event}[{i}].hooks[{j}]: must be an object'); continue
+                          if h.get('type') != 'command':
+                              errs.append(f'hooks.{event}[{i}].hooks[{j}].type: must be "command"')
+                          cmd = h.get('command', '')
+                          if not isinstance(cmd, str) or not cmd:
+                              errs.append(f'hooks.{event}[{i}].hooks[{j}].command: must be a non-empty string'); continue
+                          expanded = cmd.replace('$CLAUDE_PROJECT_DIR', target)
+                          try:
+                              parts = shlex.split(expanded)
+                          except ValueError as e:
+                              errs.append(f'hooks.{event}[{i}]: unparseable command: {e}'); continue
+                          if not parts:
+                              errs.append(f'hooks.{event}[{i}].command: empty after parsing'); continue
+                          resolved = parts[0]
+                          if not os.path.isfile(resolved):
+                              errs.append(f'hooks.{event}[{i}]: command not found: {resolved}')
+                          elif not os.access(resolved, os.X_OK):
+                              errs.append(f'hooks.{event}[{i}]: command not executable: {resolved}')
+          if errs:
+              for e in errs:
+                  print(f'::error::settings.json: {e}')
+              sys.exit(1)
+          print('settings.json schema OK')
+          PY
