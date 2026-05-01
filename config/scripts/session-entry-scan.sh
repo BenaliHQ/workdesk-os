@@ -87,12 +87,16 @@ mkdir -p "$(dirname "$STATE_FILE")"
   echo "---"
   echo "last-scan: $now"
   echo "unprocessed:"
+  # Strip control chars and quote chars before interpolating filenames
+  # into the YAML body — a hostile or simply weird filename should not
+  # forge extra frontmatter entries.
+  yaml_safe() { printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177"'; }
   echo "  transcripts:"
-  for f in "${unprocessed_transcripts[@]:-}"; do [[ -n "$f" ]] && echo "    - \"$f\""; done
+  for f in "${unprocessed_transcripts[@]:-}"; do [[ -n "$f" ]] && echo "    - \"$(yaml_safe "$f")\""; done
   echo "  intake:"
-  for f in "${intake_items[@]:-}"; do [[ -n "$f" ]] && echo "    - \"$f\""; done
+  for f in "${intake_items[@]:-}"; do [[ -n "$f" ]] && echo "    - \"$(yaml_safe "$f")\""; done
   echo "  unsummarized-session-logs:"
-  for f in "${unsummarized[@]:-}"; do [[ -n "$f" ]] && echo "    - \"$f\""; done
+  for f in "${unsummarized[@]:-}"; do [[ -n "$f" ]] && echo "    - \"$(yaml_safe "$f")\""; done
   echo "due-signals:"
   for s in "${due_signals[@]:-}"; do [[ -n "$s" ]] && echo "  - $s"; done
   echo "update-available: $update_available"

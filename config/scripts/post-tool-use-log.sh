@@ -135,57 +135,56 @@ sanitize_field() {
 target=$(sanitize_field "$target")
 event_class=$(sanitize_field "$event_class")
 
-# --- write with locking ----------------------------------------------------
-
-mkdir -p "$EVENTS_DIR" 2>/dev/null || exit 0
-[[ -f "$EVENTS_FILE" ]] || printf "# Events — %s\n\n" "$MONTH" > "$EVENTS_FILE"
-
-# 5-second de-dup: if the last line in the file matches (event-class, target),
-# skip. Cheap, single tail call.
-if [[ -f "$EVENTS_FILE" ]]; then
-  last=$(tail -n 1 "$EVENTS_FILE" 2>/dev/null || true)
-  if printf '%s' "$last" | grep -qF " | $event_class | $target | "; then
-    last_ts=$(printf '%s' "$last" | awk '{print $1, $2}')
-    last_epoch=$(date -j -f '%Y-%m-%d %H:%M' "$last_ts" '+%s' 2>/dev/null || echo 0)
-    now_epoch=$(date '+%s')
-    if (( now_epoch - last_epoch < 5 )); then
-      exit 0
-    fi
-  fi
-fi
-
-# --- C3: full-section lock with trap + stale-lock detection ----------------
+# --- C3: full-section lock with trap + PID-aware stale reclaim ------------
 #
-# Acquire LOCK_DIR via mkdir (atomic). On failure, inspect the existing
-# lock's mtime. If older than STALE_LOCK_SECONDS, treat as abandoned,
-# remove, retry once. Otherwise back off briefly and retry up to the
-# attempt budget. The trap guarantees cleanup even on signal or unexpected
-# exit during the critical section below.
+# The lock must wrap the entire read-init-write critical section: header
+# creation, last-line dedup, and append. Without that, two concurrent
+# first-writers can both initialise the file and one truncates the
+# other; or two writers can both pass dedup and double-log.
+#
+# Stale-lock reclamation is gated on process liveness (kill -0). Just
+# checking mtime is unsafe — a long-running holder still owns the lock
+# even at age > 5s, and reclaiming on time alone lets a third process
+# remove the live holder's lock when its trap fires.
 LOCK_HELD=0
 release_lock() {
   if (( LOCK_HELD == 1 )); then
-    rmdir "$LOCK_DIR" 2>/dev/null || true
+    # Only remove if we're still the recorded owner; protects against
+    # reclaim races where another process took ownership.
+    if [[ -f "$LOCK_DIR/owner.pid" ]] \
+       && [[ "$(cat "$LOCK_DIR/owner.pid" 2>/dev/null || true)" == "$$" ]]; then
+      rm -f "$LOCK_DIR/owner.pid" 2>/dev/null || true
+      rmdir  "$LOCK_DIR" 2>/dev/null || true
+    fi
     LOCK_HELD=0
   fi
 }
 trap release_lock EXIT INT TERM HUP
 
+mkdir -p "$EVENTS_DIR" 2>/dev/null || exit 0
+
 stale_reclaim_done=0
 acquired=0
-for _ in 1 2 3 4; do
+for _ in 1 2 3 4 5 6; do
   if mkdir "$LOCK_DIR" 2>/dev/null; then
+    printf '%s' "$$" > "$LOCK_DIR/owner.pid" 2>/dev/null || true
     LOCK_HELD=1
     acquired=1
     break
   fi
-  # Existing lock — check whether it's stale. Only reclaim once per run.
+  # Existing lock — only reclaim if the owner is dead (or unrecorded)
+  # AND the lock is older than STALE_LOCK_SECONDS. One reclaim per run.
   if (( stale_reclaim_done == 0 )) && [[ -d "$LOCK_DIR" ]]; then
     now=$(date '+%s')
     mtime=$(/usr/bin/stat -f '%m' "$LOCK_DIR" 2>/dev/null || echo "$now")
     if (( now - mtime > STALE_LOCK_SECONDS )); then
-      rmdir "$LOCK_DIR" 2>/dev/null || true
-      stale_reclaim_done=1
-      continue
+      owner=$(cat "$LOCK_DIR/owner.pid" 2>/dev/null || true)
+      if [[ -z "$owner" ]] || ! kill -0 "$owner" 2>/dev/null; then
+        rm -f "$LOCK_DIR/owner.pid" 2>/dev/null || true
+        rmdir  "$LOCK_DIR" 2>/dev/null || true
+        stale_reclaim_done=1
+        continue
+      fi
     fi
   fi
   sleep 0.05
@@ -194,6 +193,22 @@ done
 if (( acquired == 0 )); then
   echo "post-tool-use-log: lock contention; dropped $event_class $target" >&2
   exit 0
+fi
+
+# --- critical section: header + dedup + append ----------------------------
+
+[[ -f "$EVENTS_FILE" ]] || printf "# Events — %s\n\n" "$MONTH" > "$EVENTS_FILE"
+
+# 5-second de-dup: if the last line in the file matches (event-class, target),
+# skip. Cheap, single tail call. Now safely under the lock.
+last=$(tail -n 1 "$EVENTS_FILE" 2>/dev/null || true)
+if printf '%s' "$last" | grep -qF " | $event_class | $target | "; then
+  last_ts=$(printf '%s' "$last" | awk '{print $1, $2}')
+  last_epoch=$(date -j -f '%Y-%m-%d %H:%M' "$last_ts" '+%s' 2>/dev/null || echo 0)
+  now_epoch=$(date '+%s')
+  if (( now_epoch - last_epoch < 5 )); then
+    exit 0
+  fi
 fi
 
 ts=$(date '+%Y-%m-%d %H:%M')

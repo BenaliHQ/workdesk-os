@@ -46,7 +46,9 @@ out="$LOG_DIR/$(date '+%Y-%m-%d')-${session_id}-raw.md"
   echo ""
   echo "# Conversation (Stop-snapshot, may be partial)"
   echo ""
-  cat "$transcript" 2>/dev/null | head -c 1048576
+  # head -c reads the file directly so pipefail can't trip on
+  # SIGPIPE'd cat when the transcript is larger than the cap.
+  head -c 1048576 "$transcript" 2>/dev/null || true
 } > "$out"
 
 exit 0

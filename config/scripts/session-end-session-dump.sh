@@ -22,9 +22,20 @@ transcript=$(printf '%s' "$input" | "$JSON_GET" transcript_path 2>/dev/null || t
 [[ -z "$session_id" ]] && session_id="unknown"
 [[ -z "$transcript" || ! -f "$transcript" ]] && exit 0
 
+# Defense in depth before these values land in YAML frontmatter or the
+# file path: strip control chars and quote characters that would forge
+# additional frontmatter entries when interpolated unescaped.
+yaml_safe() {
+  printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177"'
+}
+session_id=$(yaml_safe "$session_id")
+transcript_safe=$(yaml_safe "$transcript")
+# Filename component cannot contain slashes or quotes either.
+session_id_fname=$(printf '%s' "$session_id" | LC_ALL=C tr -d '/\\')
+
 mkdir -p "$LOG_DIR"
 ts=$(date '+%Y-%m-%d-%H-%M')
-out="$LOG_DIR/${ts}-${session_id}-raw.md"
+out="$LOG_DIR/${ts}-${session_id_fname}-raw.md"
 
 {
   echo "---"
@@ -32,7 +43,7 @@ out="$LOG_DIR/${ts}-${session_id}-raw.md"
   echo "source-kind: session-log"
   echo "date: $(date '+%Y-%m-%d')"
   echo "session-id: $session_id"
-  echo "transcript-path: \"$transcript\""
+  echo "transcript-path: \"$transcript_safe\""
   echo "processed: false"
   echo "summarized: false"
   echo "complete: true"
@@ -63,6 +74,10 @@ with f:
         try:
             obj = json.loads(line)
         except (json.JSONDecodeError, ValueError):
+            continue
+        # A line may legitimately decode to a scalar or list — only
+        # dicts carry messages we care about.
+        if not isinstance(obj, dict):
             continue
 
         # Claude Code transcript shape: {"message": {"role": ..., "content": ...}}

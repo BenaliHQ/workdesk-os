@@ -141,16 +141,25 @@ EOF
 }
 
 cmd_notice() {
+  # Pass the cache state to python as argv. Interpolating $state into
+  # the heredoc would let a tampered cache file (or a hostile release
+  # tag containing ''') inject Python code that runs on every
+  # SessionStart. argv keeps it data-only — argv strings are never
+  # evaluated as code.
   local state
   state=$(cmd_check)
-
-  python3 - <<PYEOF
-import json
-state = json.loads('''$state''')
+  python3 - "$state" <<'PYEOF'
+import json, sys
+try:
+    state = json.loads(sys.argv[1])
+except (json.JSONDecodeError, ValueError, IndexError):
+    sys.exit(0)
+if not isinstance(state, dict):
+    sys.exit(0)
 if state.get('update-available'):
-    cur = state.get('current-version','?')
-    new = state.get('latest-version','?')
-    print(f"**Update available:** WorkDesk OS v{new} — run \`/update\` to install. (You're on v{cur}.)")
+    cur = state.get('current-version', '?')
+    new = state.get('latest-version', '?')
+    print(f"**Update available:** WorkDesk OS v{new} — run `/update` to install. (You're on v{cur}.)")
 PYEOF
 }
 
