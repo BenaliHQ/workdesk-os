@@ -21,7 +21,8 @@
 #   manifest.json    -> {"version": "1.3.0", "migrations": ["script.sh", ...]}
 #   migrations/      -> the actual migration scripts
 
-set -u
+set -euo pipefail
+IFS=$'\n\t'
 
 # ---- Constants ----------------------------------------------------------------
 
@@ -268,7 +269,8 @@ cmd_apply() {
   build_plan "$(current_version)" "$new_version" "$staging" > "$plan_json"
 
   # 3. Apply each file according to plan + resolutions.
-  python3 - "$plan_json" "$resolutions" "$WD" "$new_wd" "$backup_id" <<'PYEOF'
+  local rc=0
+  python3 - "$plan_json" "$resolutions" "$WD" "$new_wd" "$backup_id" <<'PYEOF' || rc=$?
 import json, os, shutil, sys
 plan_path, res_path, wd, new_wd, backup_id = sys.argv[1:6]
 plan = json.load(open(plan_path))
@@ -325,7 +327,6 @@ if problems:
     sys.stderr.write("APPLY ERRORS:\n  " + "\n  ".join(problems) + "\n")
     sys.exit(2)
 PYEOF
-  local rc=$?
   if (( rc != 0 )); then
     log "Apply failed. Restoring from backup $backup_id..."
     rsync -a --delete "$backup/" "$WD/" || log "WARNING: restore failed; backup preserved at $backup"

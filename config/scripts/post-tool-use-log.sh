@@ -5,13 +5,15 @@
 # appends one line to system/events/{YYYY-MM}.md. Drops anything that
 # doesn't match. The narrowing is intentional — see plan §"Event logging".
 #
-# Concurrency: shlock(1) preferred; falls back to atomic mkdir locking
-# on .events.lock.d/. Lock contention beyond 3 retries drops the entry
-# and warns to stderr (operations succeed; the log is observability).
+# Concurrency: full-section mkdir-based lock with trap-on-exit cleanup.
+# Stale lock (mtime older than 5s) is treated as abandoned and reclaimed.
+# Lock contention beyond retry budget drops the entry and warns to stderr
+# (operations succeed; the log is observability).
 #
 # Latency budget: < 50ms p95.
 
-set -u
+set -euo pipefail
+IFS=$'\n\t'
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VAULT="${CLAUDE_PROJECT_DIR:-$(cd "$DIR/../.." && pwd)}"
@@ -19,6 +21,7 @@ EVENTS_DIR="$VAULT/system/events"
 MONTH=$(date '+%Y-%m')
 EVENTS_FILE="$EVENTS_DIR/$MONTH.md"
 LOCK_DIR="$EVENTS_DIR/.events.lock.d"
+STALE_LOCK_SECONDS=5
 
 input="$(cat)"
 [[ -z "$input" ]] && exit 0
@@ -101,19 +104,36 @@ case "$tool" in
     # action-completed: move from gtd/actions/{next,waiting}/ to gtd/archive/actions/
     if printf '%s' "$cmd" | grep -Eq '\bmv\b.*gtd/actions/(next|waiting)/.*gtd/archive/actions'; then
       event_class="action-completed"
-      target=$(printf '%s' "$cmd" | grep -oE 'gtd/actions/(next|waiting)/[^ ]+' | head -1)
+      target=$(printf '%s' "$cmd" | grep -oE 'gtd/actions/(next|waiting)/[^ ]+' | head -1 || true)
     # object-archived: container folder → its _archive/ counterpart, or projects → archive/projects
     elif printf '%s' "$cmd" | grep -Eq '\bmv\b.*gtd/projects/.*gtd/archive/projects'; then
       event_class="object-archived"
-      target=$(printf '%s' "$cmd" | grep -oE 'gtd/projects/[^ ]+' | head -1)
+      target=$(printf '%s' "$cmd" | grep -oE 'gtd/projects/[^ ]+' | head -1 || true)
     elif printf '%s' "$cmd" | grep -Eq '\bmv\b.*atlas/(clients|businesses|areas|teams|labs|disciplines|collaborations|departments)/.*_archive'; then
       event_class="object-archived"
-      target=$(printf '%s' "$cmd" | grep -oE 'atlas/[^ ]+' | head -1)
+      target=$(printf '%s' "$cmd" | grep -oE 'atlas/[^ ]+' | head -1 || true)
     fi
     ;;
 esac
 
 [[ -z "$event_class" ]] && exit 0
+
+# --- C4: sanitize target before it touches the log -------------------------
+#
+# `target` originates in tool_input and is attacker-influenceable. The log
+# format uses ` | ` as a field delimiter and is read by humans (often via
+# `cat`/Obsidian preview). Strip control characters (newlines + escape
+# sequences) and replace the field delimiter so a hostile filename cannot
+# forge log entries or inject terminal escapes.
+sanitize_field() {
+  # tr -d strips control chars (0x00-0x1f and 0x7f).
+  # sed replaces literal "|" with "/" so the field separator stays unique.
+  printf '%s' "$1" \
+    | LC_ALL=C tr -d '\000-\037\177' \
+    | LC_ALL=C sed 's/|/_/g'
+}
+target=$(sanitize_field "$target")
+event_class=$(sanitize_field "$event_class")
 
 # --- write with locking ----------------------------------------------------
 
@@ -134,13 +154,39 @@ if [[ -f "$EVENTS_FILE" ]]; then
   fi
 fi
 
-# Acquire lock (best-effort).
+# --- C3: full-section lock with trap + stale-lock detection ----------------
+#
+# Acquire LOCK_DIR via mkdir (atomic). On failure, inspect the existing
+# lock's mtime. If older than STALE_LOCK_SECONDS, treat as abandoned,
+# remove, retry once. Otherwise back off briefly and retry up to the
+# attempt budget. The trap guarantees cleanup even on signal or unexpected
+# exit during the critical section below.
+LOCK_HELD=0
+release_lock() {
+  if (( LOCK_HELD == 1 )); then
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+    LOCK_HELD=0
+  fi
+}
+trap release_lock EXIT INT TERM HUP
+
+stale_reclaim_done=0
 acquired=0
-for attempt in 1 2 3; do
-  if command -v shlock >/dev/null 2>&1; then
-    if shlock -p $$ -f "$EVENTS_DIR/.events.lock" 2>/dev/null; then acquired=1; break; fi
-  else
-    if mkdir "$LOCK_DIR" 2>/dev/null; then acquired=1; break; fi
+for attempt in 1 2 3 4; do
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    LOCK_HELD=1
+    acquired=1
+    break
+  fi
+  # Existing lock — check whether it's stale. Only reclaim once per run.
+  if (( stale_reclaim_done == 0 )) && [[ -d "$LOCK_DIR" ]]; then
+    now=$(date '+%s')
+    mtime=$(/usr/bin/stat -f '%m' "$LOCK_DIR" 2>/dev/null || echo "$now")
+    if (( now - mtime > STALE_LOCK_SECONDS )); then
+      rmdir "$LOCK_DIR" 2>/dev/null || true
+      stale_reclaim_done=1
+      continue
+    fi
   fi
   sleep 0.05
 done
@@ -153,11 +199,5 @@ fi
 ts=$(date '+%Y-%m-%d %H:%M')
 printf '%s | %s | %s | ok\n' "$ts" "$event_class" "$target" >> "$EVENTS_FILE"
 
-# Release lock.
-if command -v shlock >/dev/null 2>&1; then
-  rm -f "$EVENTS_DIR/.events.lock"
-else
-  rmdir "$LOCK_DIR" 2>/dev/null || true
-fi
-
+# Lock released by trap on exit.
 exit 0

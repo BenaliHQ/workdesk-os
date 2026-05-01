@@ -8,7 +8,8 @@
 #
 # Marks complete: false until SessionEnd or doctor declares it complete.
 
-set -u
+set -euo pipefail
+IFS=$'\n\t'
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JSON_GET="$DIR/json-get.sh"

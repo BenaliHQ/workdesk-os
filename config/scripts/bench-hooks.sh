@@ -3,18 +3,32 @@
 #
 # Fires the PostToolUse hook 50 times with a synthetic Write payload,
 # measures wall time per invocation, sorts, and prints p50/p95/p99.
+#
+# M4: bench writes go to an isolated scratch vault under $TMPDIR, never
+# to the real CLAUDE_PROJECT_DIR. The hook still resolves its EVENTS_DIR
+# from CLAUDE_PROJECT_DIR, so we override CLAUDE_PROJECT_DIR for the
+# duration of the bench. The scratch dir is removed on exit.
 
-set -u
+set -euo pipefail
+IFS=$'\n\t'
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$DIR/post-tool-use-log.sh"
 
 [[ -x "$HOOK" ]] || { echo "hook not executable: $HOOK"; exit 1; }
 
-VAULT="${CLAUDE_PROJECT_DIR:-$(cd "$DIR/../.." && pwd)}"
-export CLAUDE_PROJECT_DIR="$VAULT"
+# Build an isolated scratch vault. The hook reads CLAUDE_PROJECT_DIR to
+# decide where to log; pointing it at the scratch dir means production
+# state at the real vault stays untouched even if the bench runs against
+# a live install.
+SCRATCH=$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/workdesk-bench.XXXXXX")
+cleanup() { rm -rf "$SCRATCH" 2>/dev/null || true; }
+trap cleanup EXIT INT TERM HUP
 
-payload='{"tool_name":"Write","tool_input":{"file_path":"'"$VAULT"'/atlas/meetings/bench-test.md"}}'
+mkdir -p "$SCRATCH/system/events"
+export CLAUDE_PROJECT_DIR="$SCRATCH"
+
+payload='{"tool_name":"Write","tool_input":{"file_path":"'"$SCRATCH"'/atlas/meetings/bench-test.md"}}'
 
 times=()
 for i in $(seq 1 50); do

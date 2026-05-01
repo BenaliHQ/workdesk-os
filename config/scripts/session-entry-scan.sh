@@ -8,7 +8,8 @@
 # Output contract (Claude Code SessionStart hook):
 #   {"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"..."}}
 
-set -u
+set -euo pipefail
+IFS=$'\n\t'
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VAULT="${CLAUDE_PROJECT_DIR:-$(cd "$DIR/../.." && pwd)}"

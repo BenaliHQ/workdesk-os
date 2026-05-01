@@ -10,7 +10,8 @@
 # Hook input arrives on stdin as JSON.
 # Permission decision contract: exit 0 + stdout JSON to allow/deny.
 
-set -u
+set -euo pipefail
+IFS=$'\n\t'
 
 input="$(cat)"
 [[ -z "$input" ]] && exit 0

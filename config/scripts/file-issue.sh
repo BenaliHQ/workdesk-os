@@ -17,7 +17,8 @@
 #   FEEDBACK_REPO      — override target repo (default: BenaliHQ/workdesk-os)
 #   FEEDBACK_LIMIT     — daily issue cap (default: 20)
 
-set -u
+set -euo pipefail
+IFS=$'\n\t'
 
 REPO="${FEEDBACK_REPO:-BenaliHQ/workdesk-os}"
 LIMIT="${FEEDBACK_LIMIT:-20}"

@@ -322,7 +322,7 @@ if ! /usr/bin/plutil -convert json -o /dev/null "$TARGET/config/settings.json" 2
   warn "config/settings.json is not valid JSON"; errs=$((errs+1))
 else
   schema_errs=$(TARGET="$TARGET" /usr/bin/python3 - <<'PY'
-import json, os, sys
+import json, os, shlex, sys
 target = os.environ["TARGET"]
 path = f"{target}/config/settings.json"
 with open(path) as f:
@@ -347,7 +347,14 @@ else:
                 cmd = h.get("command", "")
                 if not isinstance(cmd, str) or not cmd:
                     errs.append(f'hooks.{event}[{i}].hooks[{j}].command: must be a non-empty string'); continue
-                resolved = cmd.replace("$CLAUDE_PROJECT_DIR", target).split()[0]
+                expanded = cmd.replace("$CLAUDE_PROJECT_DIR", target)
+                try:
+                    parts = shlex.split(expanded)
+                except ValueError as e:
+                    errs.append(f'hooks.{event}[{i}]: unparseable command: {e}'); continue
+                if not parts:
+                    errs.append(f'hooks.{event}[{i}].hooks[{j}].command: empty after parsing'); continue
+                resolved = parts[0]
                 if not os.path.isfile(resolved):
                     errs.append(f'hooks.{event}[{i}]: command not found: {resolved}')
                 elif not os.access(resolved, os.X_OK):

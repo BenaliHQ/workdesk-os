@@ -19,7 +19,8 @@
 #     "update-available":  true
 #   }
 
-set -u
+set -euo pipefail
+IFS=$'\n\t'
 
 REPO="${WORKDESK_REPO:-BenaliHQ/workdesk-os}"
 LATEST_URL="https://api.github.com/repos/$REPO/releases/latest"

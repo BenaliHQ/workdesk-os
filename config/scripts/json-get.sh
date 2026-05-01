@@ -10,7 +10,8 @@
 # Field paths are dot-separated, e.g. "tool_input.file_path".
 # Returns empty string if the field is missing or extraction fails.
 
-set -u
+set -euo pipefail
+IFS=$'\n\t'
 
 field="${1:-}"
 [[ -z "$field" ]] && { echo ""; exit 0; }

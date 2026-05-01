@@ -7,7 +7,8 @@
 # /extract --summarize {raw-file} produces the final summarized note.
 # This hook does NOT summarize — it only exports.
 
-set -u
+set -euo pipefail
+IFS=$'\n\t'
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JSON_GET="$DIR/json-get.sh"
@@ -39,21 +40,62 @@ out="$LOG_DIR/${ts}-${session_id}-raw.md"
   echo ""
   echo "# Conversation"
   echo ""
-  /usr/bin/awk '
-    BEGIN { entry=0 }
-    /"role"[[:space:]]*:[[:space:]]*"user"/    { entry=1; print "## User\n"; next }
-    /"role"[[:space:]]*:[[:space:]]*"assistant"/ { entry=2; print "## Assistant\n"; next }
-    {
-      if (match($0, /"text"[[:space:]]*:[[:space:]]*"[^"]*"/)) {
-        t = substr($0, RSTART, RLENGTH)
-        sub(/.*: *"/, "", t)
-        sub(/"$/, "", t)
-        gsub(/\\n/, "\n", t)
-        print t
-        print ""
-      }
-    }
-  ' "$transcript"
+  # M3: parse the JSONL transcript with python's json module rather than
+  # regex/awk. Each line is a JSON object; we extract role + the
+  # concatenated text of any string content blocks. Malformed lines are
+  # skipped silently — the engine should never lose a session over a
+  # single bad line.
+  TRANSCRIPT="$transcript" /usr/bin/python3 - <<'PY'
+import json, os, sys
+
+path = os.environ["TRANSCRIPT"]
+last_role = None
+try:
+    f = open(path, "r", encoding="utf-8", errors="replace")
+except OSError:
+    sys.exit(0)
+
+with f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+        # Claude Code transcript shape: {"message": {"role": ..., "content": ...}}
+        # plus older flat shapes {"role": ..., "content": ...}. Tolerate both.
+        msg = obj.get("message") if isinstance(obj.get("message"), dict) else obj
+        if not isinstance(msg, dict):
+            continue
+        role = msg.get("role")
+        if role not in ("user", "assistant"):
+            continue
+
+        content = msg.get("content")
+        chunks = []
+        if isinstance(content, str):
+            chunks.append(content)
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict):
+                    t = block.get("text")
+                    if isinstance(t, str):
+                        chunks.append(t)
+                elif isinstance(block, str):
+                    chunks.append(block)
+        text = "\n".join(c for c in chunks if c).strip()
+        if not text:
+            continue
+
+        if role != last_role:
+            print(f"## {role.capitalize()}\n")
+            last_role = role
+        print(text)
+        print()
+PY
 } > "$out" 2>/dev/null
 
 exit 0
