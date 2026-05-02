@@ -1,6 +1,6 @@
 {
   "format": "YYYY.MM.DD [Daily Note]",
   "folder": "personal/daily",
-  "template": "intel/reference/templates/daily-note.md",
+  "template": "config/templates/daily-note.md",
   "autorun": false
 }

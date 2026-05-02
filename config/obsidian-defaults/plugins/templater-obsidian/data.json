@@ -1,5 +1,5 @@
 {
-  "templates_folder": "intel/reference/templates",
+  "templates_folder": "config/templates",
   "templates_pairs": [],
   "trigger_on_file_creation": true,
   "auto_jump_to_cursor": true,
@@ -10,7 +10,7 @@
   "folder_templates": [
     {
       "folder": "personal/daily",
-      "template": "intel/reference/templates/daily-note.md"
+      "template": "config/templates/daily-note.md"
     }
   ],
   "syntax_highlighting": true,
