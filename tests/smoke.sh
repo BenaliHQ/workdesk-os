@@ -35,7 +35,7 @@ required_paths=(
   "$vault/config/signals/daily-plan.md"
   "$vault/config/agents/orchestrator.md"
   "$vault/personal/daily"
-  "$vault/atlas/areas"
+  "$vault/atlas/meetings"
   "$vault/gtd/recurring/schedules"
   "$vault/intel/briefings/daily"
   "$vault/system/events"
