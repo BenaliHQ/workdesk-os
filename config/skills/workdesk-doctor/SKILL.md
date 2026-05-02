@@ -65,9 +65,26 @@ Confirm `config/state/session-entry.md` reflects current `system/transcripts/`, 
 - Verify the probe shows up in `unprocessed.transcripts`
 - Delete the probe
 
+### 7. Obsidian defaults drift
+
+Verify the operator's vault `.obsidian/*` matches the canonical `config/defaults/obsidian/*` shipped with the current release. Drift here is the most common cause of "the calendar button creates a blank note in the wrong folder."
+
+For each file under `config/defaults/obsidian/` (excluding `README.md`):
+
+1. Compute target path: `<vault>/.obsidian/<relative-path>`.
+2. If the target is missing, record drift: `missing: <path>`.
+3. If the target exists, parse both as JSON (these are all `.json` files) and compare. Record any key mismatches as `drift: <path> <key>`.
+
+Record results as:
+
+- `obsidian-defaults-drift: pass` — all canonical files present and matching.
+- `obsidian-defaults-drift: fail` — at least one drift; list the specific paths/keys in the chat summary.
+
+This is a soft fail — don't block the doctor's overall pass/fail on it. Surface it as a warning with the repair: "Run `/update` to refresh `.obsidian/` from the canonical defaults. Takes effect on next Obsidian launch."
+
 ## Output
 
-Write `config/state/doctor.md`. Always run all 6 phases — invocation from `/onboarding` Phase 0 means do not narrate, but does not mean skip checks.
+Write `config/state/doctor.md`. Always run all 7 phases — invocation from `/onboarding` Phase 0 means do not narrate, but does not mean skip checks.
 
 Compute the timestamp via `Bash date '+%Y-%m-%d %H:%M'` and use that exact string as `last-run:`. Never use placeholder strings like `session-start`, `today`, or `now`.
 
@@ -82,6 +99,7 @@ checks:
   session-end-or-stop-fallback: SessionEnd | Stop
   hook-latency-p95-ms: 12
   session-entry-intake-scan: pass | fail
+  obsidian-defaults-drift: pass | fail
 stop-fallback: enabled | disabled
 ---
 ```

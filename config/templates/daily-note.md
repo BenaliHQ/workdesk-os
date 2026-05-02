@@ -1,13 +1,13 @@
-# {{date:YYYY-MM-DD}} daily note
+---
+date: <% tp.date.now("YYYY-MM-DD", 0, tp.file.title, "YYYY.MM.DD [Daily Note]") %>
+type: daily
+---
 
-**Priorities**
+## Priorities
 
--
 
-**Captures**
+## Captures
 
--
 
-**End of day**
+## End of Day
 
--
