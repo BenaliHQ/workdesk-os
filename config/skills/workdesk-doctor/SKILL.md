@@ -67,9 +67,9 @@ Confirm `config/state/session-entry.md` reflects current `system/transcripts/`, 
 
 ### 7. Obsidian defaults drift
 
-Verify the operator's vault `.obsidian/*` matches the canonical `config/defaults/obsidian/*` shipped with the current release. Drift here is the most common cause of "the calendar button creates a blank note in the wrong folder."
+Verify the operator's vault `.obsidian/*` matches the canonical `config/obsidian-defaults/*` shipped with the current release. Drift here is the most common cause of "the calendar button creates a blank note in the wrong folder."
 
-For each file under `config/defaults/obsidian/` (excluding `README.md`):
+For each file under `config/obsidian-defaults/` (excluding `README.md`):
 
 1. Compute target path: `<vault>/.obsidian/<relative-path>`.
 2. If the target is missing, record drift: `missing: <path>`.
