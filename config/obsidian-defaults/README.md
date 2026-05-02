@@ -2,6 +2,8 @@
 
 Canonical `.obsidian/` configuration shipped with WorkDesk OS. Bootstrap and `/update` write these files into the operator's vault `.obsidian/` directory so the daily-note flow works on first launch without any manual settings.
 
+> **Why this lives at `config/obsidian-defaults/` and not `config/defaults/obsidian/`:** `config/defaults/` is the migrate engine's 3-way-merge baseline — it's regenerated on every release apply and excluded from the release tarball (`scripts/release.sh`). Files placed there never reach downstream operators. This directory ships normally.
+
 ## Files
 
 - `core-plugins.json` — enables core plugins WorkDesk OS depends on (notably `daily-notes`).

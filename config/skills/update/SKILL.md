@@ -122,12 +122,12 @@ If the engine fails at any step, it auto-restores from the backup before exiting
 
 After the engine `apply` succeeds, copy the canonical `.obsidian/` files from the new release into the operator's vault. These are settings the core Obsidian plugins (Daily Notes, Templater) read on launch — without them, daily-note creation lands at vault root with no template.
 
-For each file under `<staging>/workdesk/config/defaults/obsidian/` (relative path preserved):
+For each file under `<staging>/workdesk/obsidian-defaults/` (relative path preserved):
 
-1. Compute target path: `<vault>/.obsidian/<relative-path>` (strip the `config/defaults/obsidian/` prefix).
+1. Compute target path: `<vault>/.obsidian/<relative-path>` (strip the `obsidian-defaults/` prefix).
 2. If the target's parent directory doesn't exist, create it.
 3. Overwrite the target with the source file contents. These files are canonical settings, not operator preferences — no merge, no prompt.
-4. Skip the `README.md` in `config/defaults/obsidian/` — it's documentation, not config.
+4. Skip the `README.md` in `obsidian-defaults/` — it's documentation, not config.
 
 This applies on the **next natural Obsidian launch** — no toggle, no restart prompt. Don't ask the operator to do anything. The launch happens whenever they next reboot, update Obsidian, or close and reopen the app normally.
 
