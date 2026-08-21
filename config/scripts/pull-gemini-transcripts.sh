@@ -196,27 +196,23 @@ if ! command -v gws >/dev/null 2>&1; then
   exit 2
 fi
 
-# ── gws state gate ──────────────────────────────────────────────────────────
-# gws reads OAuth state from ~/Library/Application Support/gws — a normal
-# directory on disk. If the state files are missing, gws was never set up on
-# this machine (or its state was wiped): that's a configuration error, not a
-# transient condition — surface it instead of skipping silently.
-GWS_STATE_DIR="$HOME/Library/Application Support/gws"
-gws_state_present() {
-  local f
-  for f in "$GWS_STATE_DIR"/credentials.*.enc; do
-    [[ -e "$f" ]] || return 1   # unmatched glob stays literal → no creds present
-    break
-  done
-  [[ -s "$GWS_STATE_DIR/client_secret.json" ]]
+# ── gws readiness gate ──────────────────────────────────────────────────────
+# The installed gws (googleworkspace-cli) stores OAuth state in ~/.config/gws +
+# the macOS keyring and persists it itself across reboots — there is no async
+# Infisical/ramdisk render to wait for. Readiness therefore means simply: is
+# gws authenticated? If not, that's infra-not-ready (a `gws auth login` is
+# needed), NOT a per-run auth death, so skip cleanly without bumping
+# consecutive_failures (STALE should only ever reflect genuine auth death).
+gws_authenticated() {
+  gws auth status 2>/dev/null | grep -qE '"has_refresh_token":[[:space:]]*true'
 }
-if ! gws_state_present; then
-  log "ERROR  gws auth state missing at $GWS_STATE_DIR — run config/scripts/setup-gws.sh"
-  exit 2
+if ! gws_authenticated; then
+  log "INFO   gws not authenticated yet (run \`gws auth login\`) — skipping; will retry next run"
+  exit 0
 fi
 
 if ! gws drive about get --params '{"fields": "user(emailAddress)"}' >/dev/null 2>&1; then
-  log "ERROR  gws auth failed — run \`gws auth login --account you@example.com\`"
+  log "ERROR  gws auth failed — run \`gws auth login\` (pick the account in-browser)"
   prev_fails="$(read_state_field "consecutive_failures" "0")"
   new_fails=$(( prev_fails + 1 ))
   write_state "$(jq -n \
@@ -289,11 +285,22 @@ write_intake_for_doc() {
     return 4
   fi
 
-  # Extract only the Transcript tab text
+  # Extract the transcript tab's text.
+  #
+  # Match the tab title case-insensitively on *contains* "transcript", not on
+  # equality. Notes-by-Gemini Docs do not use one stable tab name: when Granola
+  # is also recording, the verbatim lands in a tab titled "Granola Transcript"
+  # rather than "Transcript". An equality match returned nothing for those docs,
+  # so size read 0 and the doc was logged as a permanent `stub-transcript` skip
+  # — silently dropping a real transcript with no failure surfaced anywhere.
+  # (Diagnosed 2026-08-21 on the 2026-08-17 NAC financials call: reported 0b,
+  # actually held 35,494 chars in a "Granola Transcript" tab.)
+  #
+  # The Notes tab is still excluded — it is titled "Notes" and never matches.
   local transcript_text
   transcript_text="$(jq -r '
     .tabs[]?
-    | select(.tabProperties.title == "Transcript")
+    | select((.tabProperties.title // "") | ascii_downcase | contains("transcript"))
     | .documentTab.body.content[]?
     | .paragraph?.elements[]?
     | .textRun?.content // empty
@@ -302,7 +309,14 @@ write_intake_for_doc() {
   local size=${#transcript_text}
 
   if [[ $size -lt $MIN_TRANSCRIPT_CHARS ]]; then
-    log "SKIP   $doc_id stub-transcript size=${size}b title=\"$event_title\""
+    # A stub skip is permanent and is NOT counted as a failure, so it never
+    # surfaces anywhere else. Log the doc's actual tab titles alongside it so a
+    # future tab-naming variant reads as "we did not match the right tab"
+    # instead of "Gemini produced nothing".
+    local tab_titles
+    tab_titles="$(jq -r '[.tabs[]?.tabProperties.title // "(untitled)"] | join(", ")' \
+      "$doc_json" 2>/dev/null)"
+    log "SKIP   $doc_id stub-transcript size=${size}b title=\"$event_title\" tabs=[${tab_titles}]"
     rm -f "$doc_json"
     return 1
   fi
