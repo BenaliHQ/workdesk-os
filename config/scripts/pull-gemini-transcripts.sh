@@ -283,11 +283,22 @@ write_intake_for_doc() {
     return 4
   fi
 
-  # Extract only the Transcript tab text
+  # Extract the transcript tab's text.
+  #
+  # Match the tab title case-insensitively on *contains* "transcript", not on
+  # equality. Notes-by-Gemini Docs do not use one stable tab name: when Granola
+  # is also recording, the verbatim lands in a tab titled "Granola Transcript"
+  # rather than "Transcript". An equality match returned nothing for those docs,
+  # so size read 0 and the doc was logged as a permanent `stub-transcript` skip
+  # — silently dropping a real transcript with no failure surfaced anywhere.
+  # (Diagnosed 2026-08-21 on the 2026-08-17 NAC financials call: reported 0b,
+  # actually held 35,494 chars in a "Granola Transcript" tab.)
+  #
+  # The Notes tab is still excluded — it is titled "Notes" and never matches.
   local transcript_text
   transcript_text="$(jq -r '
     .tabs[]?
-    | select(.tabProperties.title == "Transcript")
+    | select((.tabProperties.title // "") | ascii_downcase | contains("transcript"))
     | .documentTab.body.content[]?
     | .paragraph?.elements[]?
     | .textRun?.content // empty
@@ -296,7 +307,14 @@ write_intake_for_doc() {
   local size=${#transcript_text}
 
   if [[ $size -lt $MIN_TRANSCRIPT_CHARS ]]; then
-    log "SKIP   $doc_id stub-transcript size=${size}b title=\"$event_title\""
+    # A stub skip is permanent and is NOT counted as a failure, so it never
+    # surfaces anywhere else. Log the doc's actual tab titles alongside it so a
+    # future tab-naming variant reads as "we did not match the right tab"
+    # instead of "Gemini produced nothing".
+    local tab_titles
+    tab_titles="$(jq -r '[.tabs[]?.tabProperties.title // "(untitled)"] | join(", ")' \
+      "$doc_json" 2>/dev/null)"
+    log "SKIP   $doc_id stub-transcript size=${size}b title=\"$event_title\" tabs=[${tab_titles}]"
     rm -f "$doc_json"
     return 1
   fi
