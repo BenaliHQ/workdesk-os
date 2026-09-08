@@ -131,6 +131,9 @@ Optional sections (only when Gemini's arrays are non-empty):
 - **Open Questions** — `open_questions[]`
 
 Frontmatter:
+- `date:` is the meeting occurrence date supported by source metadata or explicit confirmation, never today's processing date or an import timestamp. If absent, leave it unknown and record the missing context. A full meeting record cannot be finalized until required context is resolved; a scoped extraction may return the requested known facts without inventing extra metadata or claiming full processing completion. Do not fabricate a date-based filename for an undated source.
+- `created:` and `last_updated:` describe note creation/editing, separate from meeting occurrence.
+- `author:` names the actual verified authoring agent/runtime. Include the operator as an attendee only when their presence is supported by the source; importing a recording does not establish attendance.
 - `sensitive: true` if Gemini flagged it (see [[../../objects/meeting]] § Confidentiality)
 - `attendees:` from `attendees_present[]` (wikilinks where they resolve, plain text otherwise)
 - `transcript:` wikilink to the intake source
