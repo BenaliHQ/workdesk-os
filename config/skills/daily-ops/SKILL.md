@@ -72,7 +72,9 @@ Print to chat (after the file is written):
 
 ### 4. Update state
 
-After successful write:
+After writing, verify source/context wikilinks with `bash config/scripts/check-wikilinks.sh --require-links <briefing-path>`. Plain-text paths and zero outgoing links do not satisfy the connection rule. Verify any newly created knowledge/inbox notes too. If required context is genuinely absent, report the gap and leave the run incomplete rather than fabricate a link.
+
+Only after successful write and verification:
 - `config/state/signals.json` → `daily-plan.last-fired` = today
 
 If write fails, do NOT update state. `/workdesk-doctor` trusts output files over state.

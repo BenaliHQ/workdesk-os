@@ -73,15 +73,20 @@ class HealthTests(unittest.TestCase):
   self.assertIn('push-marker-unavailable',h.backup_status(False,0,None,False,False))
 
 class LinkTests(unittest.TestCase):
- def run_case(self, content, notes, expected):
+ def run_case(self, content, notes, expected, require_links=False):
   with tempfile.TemporaryDirectory() as t:
    root=Path(t);scripts=root/'config/scripts';scripts.mkdir(parents=True)
    for name in ['check-wikilinks.sh','check-wikilinks.py']:shutil.copy2(W/'config/scripts'/name,scripts/name)
    for name in notes:
     p=root/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text('fixture')
    source=root/'test.md';source.write_text(content)
-   r=subprocess.run(['bash',str(scripts/'check-wikilinks.sh'),str(source)],capture_output=True,text=True)
+   r=subprocess.run(['bash',str(scripts/'check-wikilinks.sh'),*(['--require-links'] if require_links else []),str(source)],capture_output=True,text=True)
    self.assertEqual(r.returncode,expected,r.stdout+r.stderr)
+ def test_required_links_reject_plain_path(self):self.run_case('Source: system/intake/source.md',['system/intake/source.md'],1,True)
+ def test_required_links_accept_resolved_source(self):self.run_case('Source: [[system/intake/source]]',['system/intake/source.md'],0,True)
+ def test_required_links_reject_documentation_only(self):self.run_case('```md\n[[source]]\n```\n`[[source]]`',['source.md'],1,True)
+ def test_required_links_reject_legacy_plain_reference(self):self.run_case('`[ACTION] real`',['gtd/inbox/[ACTION] real.md'],1,True)
+ def test_raw_source_does_not_require_links_by_default(self):self.run_case('Alex: Here is the source.',[],0)
  def test_historical_target(self):self.run_case('[[system/transcripts/past]]', ['system/transcripts/past.md'],0)
  def test_wrong_path(self):self.run_case('[[wrong/past]]',['atlas/past.md'],1)
  def test_alias_heading_extension(self):self.run_case('[[atlas/past.md#Heading|Alias]]',['atlas/past.md'],0)

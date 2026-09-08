@@ -25,7 +25,7 @@ def markdown_files(root, sources=False, attachments=False):
             if attachments or name.endswith('.md'):
                 yield Path(base) / name
 
-def references(text):
+def references(text, wikilinks_only=False):
     fence = None
     for lineno, line in enumerate(text.splitlines(), 1):
         match = re.match(r'^\s{0,3}(`{3,}|~{3,})', line)
@@ -48,7 +48,7 @@ def references(text):
         inline_refs = []
         clean = re.sub(r'(`+)(.*?)(?<!`)\1(?!`)', inline, line)
         for target in inline_refs:
-            if '{' not in target and '...' not in target:
+            if not wikilinks_only and '{' not in target and '...' not in target:
                 yield lineno, target
         for target in re.findall(r'\[\[(.*?)\]\]', clean):
             target = target.replace(r'\|', '|').split('|')[0].split('#')[0].strip()
@@ -81,6 +81,7 @@ def resolve(target, source, root, index):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('-q', '--quiet', action='store_true')
+    parser.add_argument('--require-links', action='store_true', help='Fail when any selected Markdown note has no outgoing wikilinks; use for generated knowledge notes, not raw sources.')
     parser.add_argument('targets', nargs='+')
     args = parser.parse_args(argv)
     root = Path(__file__).resolve().parents[2]
@@ -98,16 +99,20 @@ def main(argv=None):
                          [("config", "source"), ("system", "session-log"), ("system", "transcripts")])
         elif file.suffix == '.md':
             files.add(file)
-    total = broken = 0
+    total = broken = missing = 0
     for file in sorted(files):
-        for line, target in references(file.read_text(encoding="utf-8")):
+        text = file.read_text(encoding="utf-8")
+        if args.require_links and not list(references(text, wikilinks_only=True)):
+            missing += 1
+            print(f'MISSING LINKS: {file.relative_to(root)} has no outgoing wikilinks.')
+        for line, target in references(text):
             total += 1
             if not resolve(target, file, root, index):
                 broken += 1
                 print(f'BROKEN: {file.relative_to(root)}:{line} → {target}')
     if not args.quiet:
-        print(f'Scanned {total} references; {broken} broken.')
-    return int(broken > 0)
+        print(f'Scanned {total} references; {broken} broken.' + (f' {missing} notes without outgoing wikilinks.' if args.require_links else ''))
+    return int(broken > 0 or missing > 0)
 
 if __name__ == '__main__':
     sys.exit(main())

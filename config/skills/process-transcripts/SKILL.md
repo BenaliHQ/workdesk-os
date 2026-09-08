@@ -169,7 +169,7 @@ The `[REVIEW]` flood-guard cap (≤7 per session) applies to `[REVIEW]` proposal
 
 Verify every required meeting, decision, substantive entity update and routed commitment exists, cites the source, and agrees with the source. Check the planned output list against the actual files; a missing required update keeps the run incomplete. No-content sources use an explicit disposition instead of an invented meeting.
 
-Run `bash config/scripts/check-wikilinks.sh` on every created/updated note and the source. Zero broken required references is necessary, but does not prove factual correctness. Review attendee attribution, ownership and uncertainty separately. Record source identity, output paths, verification result and any remaining work in a processing receipt in the existing session-log note (source ID/hash, output paths, verification, remaining work).
+Run `bash config/scripts/check-wikilinks.sh --require-links <paths>` on every created/updated knowledge note. Run the checker separately without `--require-links` on the raw source. A plain-text source path is not a wikilink; a note with no outgoing wikilinks fails completion. Zero broken required references is necessary, but does not prove factual correctness. Review attendee attribution, ownership and uncertainty separately. Record source identity, output paths, verification result and any remaining work in a processing receipt in the existing session-log note (source ID/hash, output paths, verification, remaining work).
 
 ### 9. Mark complete, archive, and reconcile
 
