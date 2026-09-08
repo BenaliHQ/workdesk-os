@@ -133,4 +133,38 @@ class PrivateOverlayTests(unittest.TestCase):
    root=Path(t);(root/'config').mkdir();(root/'outside').mkdir();(root/'config/scripts').symlink_to(root/'outside',target_is_directory=True)
    with self.assertRaises(ValueError):self.overlay.target_for(root/'config','scripts/private.sh')
 
+class PrivateOverlayEdgeTests(unittest.TestCase):
+ setUp=PrivateOverlayTests.setUp
+ fixture=PrivateOverlayTests.fixture
+ def test_directory_and_alternate_targets_refused_before_writes(self):
+  with tempfile.TemporaryDirectory() as t:
+   vault,pkg,target,row=self.fixture(Path(t))
+   for key in ['', '.', 'scripts/', 'scripts//private.sh']:
+    with self.assertRaises(ValueError):self.overlay.target_for(vault/'config',key)
+   second=dict(row,target='scripts/PRIVATE.sh');(pkg/'manifest.json').write_text(json.dumps({'version':'private-1','files':[row,second]}))
+   with self.assertRaises(ValueError):self.overlay.run(vault,pkg,True)
+   directory=vault/'config/scripts/directory';directory.mkdir();second=dict(row,target='scripts/directory',before_sha256=None);(pkg/'manifest.json').write_text(json.dumps({'version':'private-1','files':[row,second]}))
+   with self.assertRaises(ValueError):self.overlay.run(vault,pkg,True)
+   self.assertEqual(target.read_text(),'before\n');self.assertFalse((vault/'.workdesk-backups').exists())
+ def test_partial_failure_reports_receipt_and_retains_concurrent_edit(self):
+  from unittest.mock import patch
+  import contextlib,io
+  with tempfile.TemporaryDirectory() as t:
+   vault,pkg,target,row=self.fixture(Path(t));second=vault/'config/scripts/second.sh';second.write_text('before\n');second_row=dict(row,target='scripts/second.sh');(pkg/'manifest.json').write_text(json.dumps({'version':'private-1','files':[row,second_row]}))
+   copy=self.overlay.checked.checked_copy
+   def interfere(src,dst,expected,backup=None):
+    if dst==second:second.write_text('concurrent edit\n')
+    return copy(src,dst,expected,backup)
+   err=io.StringIO()
+   with patch.object(self.overlay.checked,'checked_copy',side_effect=interfere),contextlib.redirect_stderr(err):
+    with self.assertRaises(self.overlay.checked.ChangedTarget):self.overlay.run(vault,pkg,True)
+   receipts=list((vault/'.workdesk-backups').glob('*/receipt.json'));self.assertEqual(len(receipts),1);self.assertIn(str(receipts[0]),err.getvalue());self.assertEqual(json.loads(receipts[0].read_text())['status'],'partial');self.assertEqual(target.read_text(),'after\n');self.assertEqual(second.read_text(),'concurrent edit\n')
+ def test_unsafe_source_mode_and_backup_link_refused(self):
+  with tempfile.TemporaryDirectory() as t:
+   root=Path(t);vault,pkg,target,row=self.fixture(root);(pkg/'private.sh').chmod(0o666)
+   with self.assertRaises(ValueError):self.overlay.run(vault,pkg,True)
+   (pkg/'private.sh').chmod(0o644);external=root/'outside';external.mkdir();(vault/'.workdesk-backups').symlink_to(external,target_is_directory=True)
+   with self.assertRaises(ValueError):self.overlay.run(vault,pkg,True)
+   self.assertEqual(target.read_text(),'before\n');self.assertEqual(list(external.iterdir()),[])
+
 if __name__=='__main__':unittest.main(verbosity=2)

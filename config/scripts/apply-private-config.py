@@ -4,7 +4,7 @@
 Dry run by default. Does not alter product defaults, VERSION, runtime state, hooks,
 credentials or global paths. Reuses checked-file-copy.py for every replacement.
 """
-import argparse, datetime, importlib.util, json, tempfile
+import argparse, datetime, importlib.util, json, sys, tempfile
 from pathlib import Path, PurePosixPath
 
 spec = importlib.util.spec_from_file_location('checked', Path(__file__).with_name('checked-file-copy.py'))
@@ -15,8 +15,10 @@ PROTECTED = {'VERSION', 'settings.json', 'scripts/codex-pre-tool-use-guard.sh',
 ROOTS = {'scripts', 'skills', 'rules', 'templates', 'objects', 'sources', 'signals', 'practices', 'tools'}
 
 def target_for(config, key):
+    if not isinstance(key, str):
+        raise ValueError('Target must be a config-relative path string')
     rel = PurePosixPath(key)
-    if (rel.is_absolute() or '..' in rel.parts or '\\' in key or
+    if (not rel.parts or rel.as_posix() != key or rel.is_absolute() or '..' in rel.parts or '\\' in key or
         key in PROTECTED or any(p.startswith('.') for p in rel.parts) or
         (rel.parts[0] not in ROOTS and key != 'operator-policy.md') or
         'hooks' in rel.parts or 'guard' in rel.name or 'credential' in rel.name or
@@ -28,18 +30,27 @@ def target_for(config, key):
     return target
 
 def prepare(config, package):
+    if (config / 'defaults').is_symlink():
+        raise ValueError('Product defaults must not be a symlink')
     manifest = json.loads((package / 'manifest.json').read_text())
+    if not isinstance(manifest, dict) or not isinstance(manifest.get('files'), list):
+        raise ValueError('Private package requires a files list')
     if not isinstance(manifest.get('version'), str) or not manifest['version']:
         raise ValueError('Private package requires a version')
     planned, seen = [], set()
     for row in manifest['files']:
         key = row['target']
-        if key in seen: raise ValueError('Duplicate target: ' + key)
-        seen.add(key)
         target = target_for(config, key)
+        identity = str(target.resolve()).casefold()
+        if identity in seen: raise ValueError('Duplicate or case-equivalent target: ' + key)
+        seen.add(identity)
+        if target.exists() and not target.is_file():
+            raise ValueError('Target is not a regular file: ' + key)
         source = (package / row['source']).resolve()
         if not source.is_relative_to(package.resolve()) or not source.is_file():
             raise ValueError('Source outside package or missing: ' + key)
+        if source.stat().st_mode & 0o022:
+            raise ValueError('Package source must not be group/world writable: ' + key)
         if checked.digest(source) != row['after_sha256']:
             raise ValueError('Package source hash mismatch: ' + key)
         in_product = (config / 'defaults' / key).is_file()
@@ -61,6 +72,8 @@ def run(vault, package, apply=False):
     if not apply or all(state == 'no-op' for _, _, _, state in planned):
         return report
     backup_base = vault / '.workdesk-backups'
+    if backup_base.is_symlink():
+        raise ValueError('Backup directory must not be a symlink')
     backup_base.mkdir(exist_ok=True)
     recovery = Path(tempfile.mkdtemp(prefix='private-overlay-', dir=backup_base))
     receipt = {'package': manifest['version'], 'status': 'partial',
@@ -75,6 +88,8 @@ def run(vault, package, apply=False):
         receipt['status'] = 'applied'
     finally:
         (recovery / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+        if receipt['status'] == 'partial':
+            print('Partial installation recovery receipt: ' + str(recovery / 'receipt.json'), file=sys.stderr)
     report['receipt'] = str(recovery / 'receipt.json')
     return report
 
@@ -99,7 +114,7 @@ def restore_file(vault, receipt_path, key):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--vault', type=Path, required=True)
-    parser.add_argument('package', type=Path)
+    parser.add_argument('package', type=Path, help='Package directory, or receipt.json with --restore-file')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--restore-file', metavar='CONFIG_RELATIVE_PATH')
     args = parser.parse_args()
