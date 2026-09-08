@@ -95,4 +95,42 @@ class LinkTests(unittest.TestCase):
  def test_missing_input_fails(self):
   r=subprocess.run(['bash',str(W/'config/scripts/check-wikilinks.sh'),str(W/'missing-fixture.md')],capture_output=True,text=True);self.assertEqual(r.returncode,2)
 
+class PrivateOverlayTests(unittest.TestCase):
+ def setUp(self):
+  spec=importlib.util.spec_from_file_location('overlay',W/'config/scripts/apply-private-config.py');self.overlay=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.overlay)
+ def fixture(self,root,product=False):
+  vault=root/'vault';config=vault/'config';(config/'scripts').mkdir(parents=True);(config/'defaults').mkdir();(config/'VERSION').write_text('2.3.0');target=config/'scripts/private.sh';target.write_text('before\n');package=root/'package';package.mkdir();source=package/'private.sh';source.write_text('after\n')
+  if product:
+   (config/'defaults/scripts').mkdir();(config/'defaults/scripts/private.sh').write_text('product\n')
+  import hashlib
+  row={'target':'scripts/private.sh','source':'private.sh','ownership':'User overrides of product' if product else 'User config','before_sha256':hashlib.sha256(target.read_bytes()).hexdigest(),'after_sha256':hashlib.sha256(source.read_bytes()).hexdigest()}
+  (package/'manifest.json').write_text(json.dumps({'version':'private-1','files':[row]}));return vault,package,target,row
+ def test_apply_idempotence_and_per_file_recovery(self):
+  with tempfile.TemporaryDirectory() as t:
+   vault,pkg,target,row=self.fixture(Path(t));before=(vault/'config/VERSION').read_bytes();defaults=list((vault/'config/defaults').rglob('*'))
+   self.assertEqual(self.overlay.run(vault,pkg)['files'][0]['state'],'ready');self.assertEqual(target.read_text(),'before\n')
+   result=self.overlay.run(vault,pkg,True);self.assertEqual(target.read_text(),'after\n');self.assertEqual(self.overlay.run(vault,pkg,True)['files'][0]['state'],'no-op');self.assertEqual(len(list((vault/'.workdesk-backups').iterdir())),1)
+   self.overlay.restore_file(vault,Path(result['receipt']),row['target']);self.assertEqual(target.read_text(),'before\n');self.assertEqual((vault/'config/VERSION').read_bytes(),before);self.assertEqual(list((vault/'config/defaults').rglob('*')),defaults)
+ def test_changed_target_stops_and_preserves(self):
+  with tempfile.TemporaryDirectory() as t:
+   vault,pkg,target,row=self.fixture(Path(t));target.write_text('other-agent\n')
+   with self.assertRaises(ValueError):self.overlay.run(vault,pkg,True)
+   self.assertEqual(target.read_text(),'other-agent\n');self.assertFalse((vault/'.workdesk-backups').exists())
+ def test_changed_file_prevents_rollback(self):
+  with tempfile.TemporaryDirectory() as t:
+   vault,pkg,target,row=self.fixture(Path(t));r=self.overlay.run(vault,pkg,True);target.write_text('later-edit\n')
+   with self.assertRaises(self.overlay.checked.ChangedTarget):self.overlay.restore_file(vault,Path(r['receipt']),row['target'])
+   self.assertEqual(target.read_text(),'later-edit\n')
+ def test_scope_and_ownership_enforced(self):
+  with tempfile.TemporaryDirectory() as t:
+   vault,pkg,target,row=self.fixture(Path(t),True)
+   for key in ['../personal/note.md','VERSION','settings.json','state/signals.json','scripts/codex-pre-tool-use-guard.sh','/tmp/escape','.codex/hooks.json']:
+    with self.assertRaises(ValueError):self.overlay.target_for(vault/'config',key)
+   self.assertEqual(self.overlay.run(vault,pkg)['files'][0]['state'],'ready');row['ownership']='User config';(pkg/'manifest.json').write_text(json.dumps({'version':'private-1','files':[row]}))
+   with self.assertRaises(ValueError):self.overlay.run(vault,pkg)
+ def test_symlink_parent_escape_stops(self):
+  with tempfile.TemporaryDirectory() as t:
+   root=Path(t);(root/'config').mkdir();(root/'outside').mkdir();(root/'config/scripts').symlink_to(root/'outside',target_is_directory=True)
+   with self.assertRaises(ValueError):self.overlay.target_for(root/'config','scripts/private.sh')
+
 if __name__=='__main__':unittest.main(verbosity=2)

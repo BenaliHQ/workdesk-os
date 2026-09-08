@@ -208,3 +208,9 @@ If `check` fails (network, rate limit):
 - Suggest waiting and re-running
 
 A partially failed migration can leave changes even with the old VERSION. Surface the migration and affected files. Completed migration hashes are retained in staging; incomplete migrations must be safe to rerun. Never rerun obsolete global-state migrations merely because they are bundled in a newer release.
+
+## Operator-private distribution
+
+Use `migrate.sh private-overlay <package-dir>` to dry-run an enumerated private package, then append `--apply` within operator-authorized scope. The manifest records version and, per file, config-relative `target`, package-relative `source`, exact `ownership` (User config or User overrides of product), `before_sha256` (null for absent) and `after_sha256`. Ownership is checked against the existing product defaults. This mode never changes product VERSION/defaults, hooks, global paths or runtime state. It refuses changed targets, escaping paths, protected files and mismatched sources. Repeating an accepted package is a no-op.
+
+Recovery is per file: `migrate.sh private-overlay <receipt.json> --restore-file <config-relative-path> --apply` checks that the installed file has not changed, snapshots it, then restores its verified previous bytes. Added files have no prior snapshot and require a reviewed disposition; there is no implicit deletion. Protected safety installation remains the separate operator-run allowlisted adapter.

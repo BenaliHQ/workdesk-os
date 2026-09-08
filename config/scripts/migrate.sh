@@ -442,6 +442,7 @@ cmd_restore() {
 # ---- dispatch -----------------------------------------------------------------
 
 case "${1:-}" in
+  private-overlay) shift; python3 "$(dirname "${BASH_SOURCE[0]}")/apply-private-config.py" --vault "$VAULT" "$@" ;;
   check)   shift; cmd_check   "$@" ;;
   apply)   shift; cmd_apply   "$@" ;;
   restore) shift; cmd_restore "$@" ;;
@@ -456,6 +457,11 @@ Usage:
   migrate.sh apply <staging-dir> <resolutions.json>
       Backup, apply files (with conflict resolutions), run schema migrations,
       finalize atomically. <staging-dir> is the path emitted by 'check'.
+
+  migrate.sh private-overlay <package-dir> [--apply]
+      Review/apply enumerated private config without changing product defaults or VERSION.
+  migrate.sh private-overlay <receipt.json> --restore-file <path> --apply
+      Restore one existing-file snapshot after checking the installed hash.
 
   migrate.sh restore <backup-id>
       Roll back config/ to a prior backup at \$VAULT/.workdesk-backups/<id>/.
