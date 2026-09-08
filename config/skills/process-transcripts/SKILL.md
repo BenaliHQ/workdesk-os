@@ -43,7 +43,7 @@ Both are versioned with the skill so changes are auditable.
 
 ## Source location
 
-Per [[../../rules/source-processing-pattern]], unprocessed transcripts live in `system/intake/`. Processed transcripts get moved to `system/transcripts/` (the archive) only after every downstream artifact is produced AND verified. **Never process a transcript that's still in `system/transcripts/`** — that's the post-processing archive; if it's there it's already done.
+Per [[../../rules/source-processing-pattern]], unprocessed transcripts live in `system/intake/`. Processed transcripts get moved to `system/transcripts/` (the archive) only after every downstream artifact is produced AND verified. Archive location alone is not completion evidence. Before retrying an archived source, reconcile its stable source identity, `processed-into` outputs and verification result. Resume only missing work; preserve existing verified notes and commitments. Do not create duplicates.
 
 ## Phases (per transcript)
 
@@ -54,7 +54,9 @@ Read the transcript's frontmatter. Verify:
 - `source-kind: transcript`
 - `source-format` is one of: `granola-public-api`, `google-meet-transcript`, `gemini-meet-transcript`
 
-If `processed: true`, skip.
+If `processed: true`, verify referenced outputs before skipping. Missing or contradictory completion evidence needs reconciliation, not a duplicate extraction.
+
+Separate people merely mentioned from attendees; preserve tentative commercial terms as proposals. An empty recording or voicemail receives an explicit no-content disposition with source provenance, not an invented meeting or commitment. Review relevant recorded learnings before processing.
 
 Pre-load vault context that downstream phases need (do this BEFORE the Gemini call so the wikilink resolution work in Phase 3 is fast):
 - Glob `atlas/people/*.md` — list of person notes for wikilink resolution
@@ -163,25 +165,17 @@ The meeting note's `## Action Items` section captures the **full record** — ev
 
 The `[REVIEW]` flood-guard cap (≤7 per session) applies to `[REVIEW]` proposals (uncertain inferences). It does NOT apply to `[ACTION]` items.
 
-### 8. Flip source state and archive
+### 8. Verify outputs before completion
 
-Update intake-file frontmatter:
-- `processed: true`
-- `processed-into:` — list with wikilinks to meeting note + any standalone decisions + any new person notes + any inbox items
+Verify every required meeting, decision, substantive entity update and routed commitment exists, cites the source, and agrees with the source. Check the planned output list against the actual files; a missing required update keeps the run incomplete. No-content sources use an explicit disposition instead of an invented meeting.
 
-Then move the file: `system/intake/{filename}` → `system/transcripts/{filename}` via `mv`. The transcript stays in `system/transcripts/` permanently as the audit trail.
+Run `bash config/scripts/check-wikilinks.sh` on every created/updated note and the source. Zero broken required references is necessary, but does not prove factual correctness. Review attendee attribution, ownership and uncertainty separately. Record source identity, output paths, verification result and any remaining work in a processing receipt in the existing session-log note (source ID/hash, output paths, verification, remaining work).
 
-### 9. Verify
+### 9. Mark complete, archive, and reconcile
 
-Run `bash config/scripts/check-wikilinks.sh` on:
-- The new meeting note
-- Any decision notes created
-- Any person notes created or updated
-- Any client/business `_status.md` updated
-- The moved transcript file
-- Any inbox items created
+Only after step 8 succeeds, set `processed: true` and populate `processed-into:` with the verified outputs. A no-content source must retain its explicit disposition and verification evidence even when it has no meeting output. Move an intake source to `system/transcripts/` without replacing an existing file; an existing destination is a reconciliation case, not permission to overwrite.
 
-Zero broken required before declaring done. The script catches both `[[wikilinks]]` and backtick-style inbox references (`` `[ACTION] foo` ``).
+Verify the final source location and its output links after the move. A failed move or final check leaves the overall run incomplete. On retry, inspect both locations and that processing receipt, reuse verified outputs, and do only missing work. Never infer completion from an archive location alone or create a second commitment for the same source item.
 
 ### 10. Log
 

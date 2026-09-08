@@ -24,3 +24,5 @@ jobs:
         run: ./tests/update-check-test.sh
       - name: feedback throttle
         run: ./tests/feedback-throttle-test.sh
+      - name: Reliability regression fixtures
+        run: python3 -m unittest discover -s tests -p "test_reliability.py" -v

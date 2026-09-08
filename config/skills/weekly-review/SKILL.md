@@ -19,10 +19,10 @@ The most important signal in the first 30 days. Active from week 1. Stable every
 Per `config/signals/weekly-review.md`:
 
 - `gtd/actions/next/` and `gtd/actions/waiting/` (status, last-touched)
-- `gtd/projects/*/_status.md` (active, expected-cadence vs last-touched)
+- Projects across `gtd/projects/*`, `atlas/clients/*/projects/*`, and `atlas/businesses/*/projects/*`: read each `_brief.md` and `_status.md`. Respect explicit status; use declared cadence and dates, including `last_updated` / `last-updated` when `last-touched` is absent. Missing dates are unknown, not evidence for closure.
 - `gtd/recurring/schedules/` filter `status: active` AND `next_due <= today + 7d`
 - `gtd/inbox/` (full backlog + age + prefix mix)
-- Stale projects (`gtd/projects/*`) and stale recurring items (`gtd/recurring/*`): `today - last-touched > 1.5 × expected-cadence` (skip `expected-cadence: none`)
+- Stale projects (all three locations above) and stale recurring items (`gtd/recurring/*`): `today - last-touched > 1.5 × expected-cadence` (skip `expected-cadence: none`)
 - Last 7 days of `personal/daily/` (read only)
 - Processed transcripts since `weekly-review.last-fired`
 

@@ -57,6 +57,9 @@ rsync -a \
   --exclude='state/' \
   --exclude='snapshots/' \
   --exclude='.DS_Store' \
+  --exclude='__pycache__/' \
+  --exclude='*.pyc' \
+  --exclude='operator-policy.md' \
   config/ "$STAGE/workdesk/"
 
 # Migrations: if migrations/ exists at repo root, copy and list scripts in

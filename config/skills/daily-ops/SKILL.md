@@ -17,7 +17,7 @@ Daily operating cycle. Reads session-entry state, runs the daily-plan signal, su
 
 ### 1. Read session-entry state
 
-Read `config/state/session-entry.md`. Note the counts:
+Read the current host-local session-entry report named by SessionStart. If unavailable, run `bash config/scripts/session-entry-scan.sh` and read the report path in its JSON context. Do not use the historical shared `config/state/session-entry.md` as current evidence. Note the counts:
 - unprocessed transcripts
 - intake items
 - unsummarized session logs
@@ -41,7 +41,7 @@ Follow `config/signals/daily-plan.md`:
    - Surface stale work where `today - last-touched > 1.5 × expected-cadence`
    - For each `gtd/actions/waiting/` item, check whether it's unblocked or needs a nudge
 3. **Reason — GTD triage.** Assign every candidate a disposition (do-now / prioritize / delegate / defer / delete) and lead the plan with the 1–3 items that truly require the operator. See the signal's `## Reasoning — focus & GTD triage`.
-4. Apply sparse-data fallback chain (skip layers with no data)
+4. Apply the sparse-data fallback chain. Distinguish verified-empty, not-configured, unavailable, and stale sources. For unavailable calendar/CRM/search, report the failed read and its recovery step; never present unknown commitments as zero. Preserve useful vault-only output with an explicit coverage limit.
 5. Apply tonality from `operator-profile.role` and `operator-profile.work-mode`. If `first-30-days-mode: active`, lean toward setup-oriented framing; otherwise neutral. If either field is empty (early state), default to neutral.
 
 Write to `intel/briefings/daily/{YYYY-MM-DD}-daily-plan.md` with the signal frontmatter:
@@ -81,7 +81,7 @@ If write fails, do NOT update state. `/workdesk-doctor` trusts output files over
 
 Daily-plan also cleans up expired inbox items as a side effect:
 - `[AWARENESS]` older than 7 days → archive to `gtd/inbox/_archive/{YYYY-MM}/`
-- `[QUESTION]` older than 14 days → archive
+- `[QUESTION]` remains active while unanswered, regardless of age. Archive only after resolution is recorded, or after its unresolved substance has been transferred to a durable linked record with an explicit disposition. Age alone never resolves a question or truth conflict.
 
 `[REVIEW]` and `[ACTION]` never expire — operator clears.
 
