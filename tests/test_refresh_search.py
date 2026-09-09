@@ -33,6 +33,7 @@ class RefreshTests(unittest.TestCase):
         self.package_root = self.root/'qmd-package'
         self.package_root.mkdir()
         (self.package_root/'package.json').write_text('{"version":"2.0.1"}')
+        self.minimum_source_files=1
         self.fake()
         self.fake_verifier()
 
@@ -45,7 +46,7 @@ class RefreshTests(unittest.TestCase):
             'import sys,os,json,time\nfrom pathlib import Path\n'
             f'mode={mode!r}\n'
             'stage=sys.argv[1]\n'
-            'if stage=="--version":\n print("qmd 2.0.1");sys.exit(0)\n'
+            'if stage=="--version":\n print("qmd 2.0.1 (abc1234)" if mode=="version-suffix" else "qmd 2.0.2" if mode=="wrong-version" else "qmd 2.0.1");sys.exit(0)\n'
             'config=Path(os.environ["QMD_CONFIG_DIR"])/"index.yml"\n'
             'assert json.loads(config.read_text())["collections"]["fixture"].get("update") is None\n'
             'if stage=="embed":\n'
@@ -56,26 +57,33 @@ class RefreshTests(unittest.TestCase):
             'sys.exit(3 if mode=="update-failure" and stage=="update" else 0)\n')
         self.qmd.chmod(0o700)
 
-    def fake_verifier(self, mode='success'):
+    def fake_verifier(self, mode='success', source_count=1, inventory_mode='success'):
         self.node.write_text('#!/usr/bin/env python3\n'
             'import json,sys,hashlib\nfrom pathlib import Path\n'
             f'mode={mode!r}\n'
+            f'source_count={source_count!r}\ninventory_mode={inventory_mode!r}\n'
+            'if sys.argv[-1]=="--inventory-only":\n'
+            ' raw=Path(sys.argv[-2]).read_bytes()\n'
+            ' issues=[{"reason":"source-changed-during-audit"}] if inventory_mode=="changing" else []\n'
+            ' print(json.dumps({"mode":"source-inventory","collection":"fixture","qmd_version":"2.0.1","config_sha256":hashlib.sha256(raw).hexdigest(),"source_files":source_count,"source_issues":issues,"all_checks_pass":not issues}))\n'
+            ' sys.exit(2 if issues else 0)\n'
             'if mode=="malformed": print("not JSON");sys.exit(0)\n'
+            'if mode=="stderr-warning": print("synthetic Node warning",file=sys.stderr)\n'
             'raw=Path(sys.argv[-1]).read_bytes()\n'
             'source=[{"reason":"source-content-changed"}] if mode=="stale" else []\n'
             'chunks=[{"reason":"missing-chunk"}] if mode=="missing" else []\n'
-            'print(json.dumps({"collection":"fixture","qmd_version":"2.0.1","config_sha256":hashlib.sha256(raw).hexdigest(),"source_issues":source,"chunk_issues":chunks,"all_checks_pass":not(source or chunks)}))\n'
+            'print(json.dumps({"collection":"fixture","qmd_version":"2.0.1","config_sha256":hashlib.sha256(raw).hexdigest(),"source_files":source_count,"source_issues":source,"chunk_issues":chunks,"all_checks_pass":not(source or chunks)}))\n'
             'sys.exit(2 if source or chunks else 0)\n')
         self.node.chmod(0o700)
 
     def run_refresh(self, timeout=10):
-        return runner.refresh(self.vault,self.config,self.sha,self.index,self.state,self.qmd,timeout,node=self.node,package_root=self.package_root)
+        return runner.refresh(self.vault,self.config,self.sha,self.index,self.state,self.qmd,timeout,node=self.node,package_root=self.package_root,minimum_source_files=self.minimum_source_files)
 
     def test_success_keeps_frozen_configuration_and_receipt(self):
         before=self.config.read_bytes()
         receipt,code=self.run_refresh()
         self.assertEqual(code,0,receipt)
-        self.assertEqual([s['stage'] for s in receipt['steps']],['update','embed','verification'])
+        self.assertEqual([s['stage'] for s in receipt['steps']],['source-preflight','update','embed','verification'])
         self.assertEqual((Path(receipt['run'])/'config/index.yml').read_bytes(),before)
         self.assertEqual(self.config.read_bytes(),before)
         self.assertEqual(json.loads((self.state/'last-success.json').read_text()),receipt)
@@ -88,6 +96,14 @@ class RefreshTests(unittest.TestCase):
         self.write_config()
         with self.assertRaisesRegex(ValueError,'shell-update'):self.run_refresh()
         self.assertFalse(self.state.exists())
+
+    def test_supported_version_git_suffix_and_unsupported_version(self):
+        self.fake('version-suffix');receipt,code=self.run_refresh()
+        self.assertEqual(code,0,receipt)
+        self.fake('wrong-version');receipt,code=self.run_refresh()
+        self.assertEqual(code,2)
+        self.assertEqual(receipt['steps'],[])
+        self.assertIn('unsupported-qmd-version',receipt['error'])
 
     def test_other_vault_and_multiple_collections_refused(self):
         self.data['collections']['fixture']['path']=str(self.root/'other')
@@ -127,7 +143,7 @@ class RefreshTests(unittest.TestCase):
     def test_update_failure_stops_before_embedding(self):
         self.fake('update-failure');receipt,code=self.run_refresh()
         self.assertEqual(code,2)
-        self.assertEqual([s['stage'] for s in receipt['steps']],['update'])
+        self.assertEqual([s['stage'] for s in receipt['steps']],['source-preflight','update'])
         self.assertFalse((self.state/'last-success.json').exists())
 
     def test_interrupted_or_unreadable_prior_receipt_blocks_retry(self):
@@ -165,6 +181,43 @@ class RefreshTests(unittest.TestCase):
         self.fake_verifier('malformed');receipt,code=self.run_refresh()
         self.assertEqual(code,2)
         self.assertTrue((self.state/'repair-required.json').exists())
+
+    def test_verifier_stderr_is_preserved_separately_from_whole_json(self):
+        self.fake_verifier('stderr-warning');receipt,code=self.run_refresh()
+        self.assertEqual(code,0,receipt)
+        step=receipt['steps'][-1]
+        self.assertEqual(Path(step['stderr_log']).read_text(),'synthetic Node warning\n')
+        self.assertTrue(json.loads(Path(step['log']).read_text())['all_checks_pass'])
+        self.assertFalse((self.state/'repair-required.json').exists())
+
+    def test_empty_or_partial_sources_stop_before_update_and_preserve_last_success(self):
+        self.minimum_source_files=4
+        self.fake_verifier(source_count=4)
+        receipt,code=self.run_refresh();self.assertEqual(code,0,receipt)
+        before=(self.state/'last-success.json').read_bytes()
+        for count in (0,3,3):
+            with self.subTest(count=count):
+                self.fake_verifier(source_count=count)
+                receipt,code=self.run_refresh()
+                self.assertEqual((code,receipt['failed_stage']),(2,'source-preflight'))
+                self.assertEqual([s['stage'] for s in receipt['steps']],['source-preflight'])
+                self.assertIn('source-count-below-reviewed-minimum',receipt['error'])
+                self.assertEqual((self.state/'last-success.json').read_bytes(),before)
+                self.assertFalse((self.state/'repair-required.json').exists())
+        self.fake_verifier(source_count=4)
+        receipt,code=self.run_refresh();self.assertEqual(code,0,receipt)
+
+    def test_source_inventory_changes_stop_before_update(self):
+        self.fake_verifier(inventory_mode='changing')
+        receipt,code=self.run_refresh()
+        self.assertEqual((code,receipt['failed_stage']),(2,'source-preflight'))
+        self.assertEqual([s['stage'] for s in receipt['steps']],['source-preflight'])
+
+    def test_source_minimum_must_be_reviewed_positive_integer(self):
+        for minimum in (0,-1,True,'1'):
+            self.minimum_source_files=minimum
+            with self.assertRaisesRegex(ValueError,'positive-reviewed-minimum'):self.run_refresh()
+        self.assertFalse(self.state.exists())
 
     def test_failure_receipt_blocks_retry_when_repair_marker_was_not_written(self):
         self.state.mkdir()

@@ -8,6 +8,15 @@ import {pathToFileURL,fileURLToPath} from 'node:url';
 
 const sha=text=>createHash('sha256').update(text).digest('hex');
 
+export function readSource(vault,path,issues){
+  try{return readFileSync(resolve(vault,path),'utf8');}
+  catch(error){
+    if(error.code!=='ENOENT'&&error.code!=='ENOTDIR')throw error;
+    issues.push({path,reason:'source-changed-during-audit'});
+    return null;
+  }
+}
+
 export function missingChunks(hash,chunks,metadata,vectorKeys,model){
   const issues=[];
   for(let seq=0;seq<chunks.length;seq++){
@@ -18,7 +27,7 @@ export function missingChunks(hash,chunks,metadata,vectorKeys,model){
   return issues;
 }
 
-export async function verify({packageRoot,index,vault,config}){
+export async function verify({packageRoot,index,vault,config,inventoryOnly=false}){
   const require=createRequire(resolve(packageRoot,'package.json'));
   if(JSON.parse(readFileSync(resolve(packageRoot,'package.json'),'utf8')).version!=='2.0.1')throw Error('Unsupported QMD version');
   const YAML=require('yaml');const glob=require('fast-glob');const Database=require('better-sqlite3');
@@ -36,22 +45,33 @@ export async function verify({packageRoot,index,vault,config}){
   const names=await listFiles();
   for(const name of names){
     if(name.split('/').some(n=>n.startsWith('.')))continue;
-    const body=readFileSync(resolve(vault,name),'utf8');
+    const body=readSource(vault,name,sourceIssues);
+    if(body===null)continue;
     observed.set(name,sha(body));
     if(!body.trim()){empty++;continue;}
     const key=api.handelize(name);
     if(sources.has(key))sourceIssues.push({path:key,reason:'normalized-path-collision'});
     sources.set(key,{path:name,hash:sha(body)});
   }
+  if(inventoryOnly){
+    if(JSON.stringify(await listFiles())!==JSON.stringify(names))sourceIssues.push({reason:'source-paths-changed-during-audit'});
+    if(!readFileSync(config).equals(raw))sourceIssues.push({reason:'configuration-changed-during-audit'});
+    return {as_of:new Date().toISOString(),mode:'source-inventory',qmd_version:'2.0.1',collection,
+      config_sha256:sha(raw),source_files:sources.size,empty_files:empty,source_issues:sourceIssues,
+      all_checks_pass:!sourceIssues.length,
+      limits:'Read-only source inventory before indexing; does not verify index health or future source availability.'};
+  }
   const db=new Database(index,{readonly:true,fileMustExist:true});loadSqliteVec(db);db.exec('BEGIN');
   try{
     const registered=db.prepare('SELECT name,path,pattern FROM store_collections').all();
     if(registered.length!==1||registered[0].name!==collection||realpathSync(registered[0].path)!==realpathSync(vault)||registered[0].pattern!==scope.pattern)throw Error('Index collection metadata does not match reviewed scope');
     if(db.prepare('SELECT COUNT(*) AS n FROM documents WHERE active=1 AND collection<>?').get(collection).n)sourceIssues.push({reason:'unexpected-active-collection'});
-    const rows=db.prepare('SELECT d.path,d.hash,c.doc FROM documents d JOIN content c ON c.hash=d.hash WHERE d.active=1 AND d.collection=?').all(collection);
+    const rows=db.prepare('SELECT d.path,d.hash,c.doc FROM documents d LEFT JOIN content c ON c.hash=d.hash WHERE d.active=1 AND d.collection=?').all(collection);
     const seen=new Set();const hashes=new Map();
     for(const row of rows){
-      seen.add(row.path);hashes.set(row.hash,row.doc);
+      seen.add(row.path);
+      if(row.doc===null){sourceIssues.push({path:row.path,reason:'index-content-missing'});continue;}
+      hashes.set(row.hash,row.doc);
       const source=sources.get(row.path);
       if(!source)sourceIssues.push({path:row.path,reason:'indexed-source-no-longer-in-scope'});
       else if(sha(row.doc)!==row.hash)sourceIssues.push({path:row.path,reason:'index-content-corrupt'});
@@ -71,7 +91,10 @@ export async function verify({packageRoot,index,vault,config}){
     for(const key of vectorKeys)if(hashes.has(key.slice(0,64))&&!expectedKeys.has(key))chunkIssues.push({key,reason:'unexpected-active-vector'});
     // A lengthy tokenizer audit must not silently accept files changed since enumeration.
     if(JSON.stringify(await listFiles())!==JSON.stringify(names))sourceIssues.push({reason:'source-paths-changed-during-audit'});
-    for(const [path,hash] of observed)if(sha(readFileSync(resolve(vault,path),'utf8'))!==hash)sourceIssues.push({path,reason:'source-changed-during-audit'});
+    for(const [path,hash] of observed){
+      const body=readSource(vault,path,sourceIssues);
+      if(body!==null&&sha(body)!==hash)sourceIssues.push({path,reason:'source-changed-during-audit'});
+    }
     if(!readFileSync(config).equals(raw))sourceIssues.push({reason:'configuration-changed-during-audit'});
     return {as_of:new Date().toISOString(),qmd_version:'2.0.1',collection,config_sha256:sha(raw),source_files:sources.size,
       empty_files:empty,indexed_documents:rows.length,indexed_hashes:hashes.size,expected_chunks:expected,
@@ -81,9 +104,10 @@ export async function verify({packageRoot,index,vault,config}){
 }
 
 async function main(){
-  const [packageRoot,index,vault,config]=process.argv.slice(2);
+  const [packageRoot,index,vault,config,mode]=process.argv.slice(2);
   if(!packageRoot||!index||!vault||!config)throw Error('Usage: verify-search-index.mjs QMD_PACKAGE INDEX VAULT CONFIG');
-  const result=await verify({packageRoot,index,vault,config});
+  if(mode!==undefined&&mode!=='--inventory-only')throw Error('Unsupported mode');
+  const result=await verify({packageRoot,index,vault,config,inventoryOnly:mode==='--inventory-only'});
   process.stdout.write(JSON.stringify(result)+'\n');process.exit(result.all_checks_pass?0:2);
 }
 if(process.argv[1]&&realpathSync(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{process.stdout.write(JSON.stringify({all_checks_pass:false,error:String(error)})+'\n');process.exit(2);});

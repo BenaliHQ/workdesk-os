@@ -6,7 +6,7 @@ refresh invocations must use this runner's lock; it cannot lock an unrelated
 manual QMD process. Receipts describe this run, not current source completeness.
 """
 import argparse
-from contextlib import closing
+from contextlib import closing, ExitStack
 import datetime as dt
 import fcntl
 import hashlib
@@ -56,9 +56,11 @@ def reviewed_config(config, expected, vault):
     return raw, name
 
 
-def execute(command, env, log, timeout, lock_fd):
-    with log.open('wb') as output:
-        process = subprocess.Popen(command, env=env, stdout=output, stderr=subprocess.STDOUT,
+def execute(command, env, log, timeout, lock_fd, stderr_log=None):
+    with ExitStack() as stack:
+        output = stack.enter_context(log.open('wb'))
+        errors = stack.enter_context(stderr_log.open('wb')) if stderr_log else subprocess.STDOUT
+        process = subprocess.Popen(command, env=env, stdout=output, stderr=errors,
                                    start_new_session=True, pass_fds=(lock_fd,))
         def drain():
             try:
@@ -93,8 +95,10 @@ def execute(command, env, log, timeout, lock_fd):
                 signal.signal(number, handler)
 
 
-def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, package_root):
+def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, package_root, minimum_source_files):
     vault = vault.resolve()
+    if type(minimum_source_files) is not int or minimum_source_files < 1:
+        raise ValueError('positive-reviewed-minimum-source-files-required')
     for path in (index, state):
         if path.resolve() == vault or vault in path.resolve().parents:
             raise ValueError('index-and-state-must-be-host-local-outside-vault')
@@ -119,7 +123,7 @@ def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, p
                 return {'status': 'repair-required', 'reason': 'unreadable-prior-receipt', 'as_of': stamp()}, 2
             if not isinstance(prior, dict) or prior.get('status') not in ('completed', 'failed'):
                 return {'status': 'repair-required', 'reason': 'interrupted-or-invalid-prior-run', 'as_of': stamp()}, 2
-            if prior.get('status') == 'failed' and prior.get('failed_stage') not in ('version', 'update', 'source-freshness'):
+            if prior.get('status') == 'failed' and prior.get('failed_stage') not in ('version', 'source-preflight', 'update', 'source-freshness'):
                 return {'status': 'repair-required', 'reason': 'prior-embedding-or-verification-failure', 'as_of': stamp()}, 2
         run = Path(tempfile.mkdtemp(prefix='run-', dir=state))
         frozen = run/'config'
@@ -129,6 +133,7 @@ def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, p
         env.update(QMD_CONFIG_DIR=str(frozen), INDEX_PATH=str(index.resolve()))
         receipt = {'status': 'running', 'started_at': stamp(), 'run': str(run),
                    'config_sha256': expected, 'collection': collection, 'steps': [],
+                   'minimum_source_files': minimum_source_files,
                    'limits': 'Source and chunk coverage are checked at the recorded observation, not guaranteed afterward. Retrieval relevance and factual accuracy are not certified. Repair markers require independent reconciliation; the runner does not clear them.'}
         save(run/'receipt.json', receipt)
         save(state/'last-run.json', receipt)
@@ -136,8 +141,27 @@ def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, p
         try:
             version_log = run/'version.log'
             code = execute([str(qmd), '--version'], env, version_log, 30, lock.fileno())
-            if code or version_log.read_text().strip() != 'qmd 2.0.1':
+            if code or not re.fullmatch(r'qmd 2\.0\.1(?: \([0-9a-f]{4,40}\))?', version_log.read_text().strip()):
                 raise RuntimeError('unsupported-qmd-version')
+            stage = 'source-preflight'
+            log = run/'source-preflight.log'
+            errors = run/'source-preflight-stderr.log'
+            step = {'stage': stage, 'exit': None, 'log': str(log), 'stderr_log': str(errors)}
+            receipt['steps'].append(step)
+            save(run/'receipt.json', receipt)
+            code = execute([str(node), str(Path(__file__).with_name('verify-search-index.mjs')),
+                            str(package_root), str(index.resolve()), str(vault), str(frozen/'index.yml'),
+                            '--inventory-only'], env, log, timeout, lock.fileno(), stderr_log=errors)
+            step['exit'] = code
+            inventory = json.loads(log.read_text())
+            receipt['source_inventory'] = inventory
+            if (code or not isinstance(inventory, dict) or inventory.get('mode') != 'source-inventory' or
+                    inventory.get('collection') != collection or inventory.get('config_sha256') != expected or
+                    inventory.get('qmd_version') != '2.0.1' or inventory.get('all_checks_pass') is not True or
+                    inventory.get('source_issues') != [] or type(inventory.get('source_files')) is not int):
+                raise RuntimeError('invalid-or-changing-source-inventory')
+            if inventory['source_files'] < minimum_source_files:
+                raise RuntimeError('source-count-below-reviewed-minimum')
             for stage in ('update', 'embed'):
                 log = run/(stage+'.log')
                 step = {'stage': stage, 'exit': None, 'log': str(log)}
@@ -162,12 +186,13 @@ def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, p
             if pending:
                 raise RuntimeError('first-vector-backlog-remains')
             log = run/'verification.log'
-            step = {'stage': stage, 'exit': None, 'log': str(log)}
+            errors = run/'verification-stderr.log'
+            step = {'stage': stage, 'exit': None, 'log': str(log), 'stderr_log': str(errors)}
             receipt['steps'].append(step)
             save(run/'receipt.json', receipt)
             code = execute([str(node), str(Path(__file__).with_name('verify-search-index.mjs')),
                             str(package_root), str(index.resolve()), str(vault), str(frozen/'index.yml')],
-                           env, log, timeout, lock.fileno())
+                           env, log, timeout, lock.fileno(), stderr_log=errors)
             step['exit'] = code
             report = json.loads(log.read_text())
             if (not isinstance(report, dict) or report.get('collection') != collection or
@@ -175,6 +200,8 @@ def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, p
                     not isinstance(report.get('source_issues'), list) or not isinstance(report.get('chunk_issues'), list)):
                 raise RuntimeError('invalid-full-verification-report')
             receipt['verification'] = report
+            if type(report.get('source_files')) is not int or report['source_files'] < minimum_source_files:
+                raise RuntimeError('verified-source-count-below-reviewed-minimum')
             if code or report.get('all_checks_pass') is not True or report['source_issues'] or report['chunk_issues']:
                 retryable = {'source-content-changed', 'source-not-indexed', 'indexed-source-no-longer-in-scope',
                              'source-changed-during-audit', 'source-paths-changed-during-audit'}
@@ -202,10 +229,13 @@ if __name__ == '__main__':
     for flag in ('vault', 'config', 'index', 'state', 'qmd', 'node', 'package-root'):
         parser.add_argument('--'+flag, type=Path, required=True)
     parser.add_argument('--expected-config-sha256', required=True)
+    parser.add_argument('--minimum-source-files', type=int, required=True,
+                        help='Reviewed positive source-count floor; never inferred downward from recent runs')
     args = parser.parse_args()
     try:
         result, code = refresh(args.vault, args.config, args.expected_config_sha256,
-                               args.index, args.state, args.qmd, node=args.node, package_root=args.package_root)
+                               args.index, args.state, args.qmd, node=args.node, package_root=args.package_root,
+                               minimum_source_files=args.minimum_source_files)
     except Exception as exc:
         result, code = {'status': 'preflight-failed', 'error': type(exc).__name__+': '+str(exc)}, 2
     print(json.dumps(result, indent=2))
