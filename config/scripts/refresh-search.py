@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""Refresh a reviewed, single-vault QMD 2.0.1 index; requires pinned PyYAML.
+
+Install only after initial index/embedding verification and writer drain. All
+refresh invocations must use this runner's lock; it cannot lock an unrelated
+manual QMD process. Receipts describe this run, not current source completeness.
+"""
+import argparse
+from contextlib import closing
+import datetime as dt
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import signal
+import sqlite3
+import subprocess
+import tempfile
+
+
+def stamp():
+    return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def save(path, value):
+    with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as f:
+        json.dump(value, f, indent=2)
+        f.write('\n')
+        f.flush()
+        os.fsync(f.fileno())
+        temporary = Path(f.name)
+    os.replace(temporary, path)
+
+
+def reviewed_config(config, expected, vault):
+    import yaml
+    raw = config.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != expected:
+        raise ValueError('configuration-hash-changed')
+    data = yaml.safe_load(raw)
+    cols = data.get('collections') if isinstance(data, dict) else None
+    if not isinstance(cols, dict) or len(cols) != 1:
+        raise ValueError('exactly-one-reviewed-collection-required')
+    name, col = next(iter(cols.items()))
+    if not isinstance(name, str) or not isinstance(col, dict):
+        raise ValueError('invalid-collection')
+    path = col.get('path')
+    if not isinstance(path, str) or not path.strip():
+        raise ValueError('explicit-collection-path-required')
+    if Path(path).resolve() != vault.resolve():
+        raise ValueError('collection-vault-mismatch')
+    if col.get('update') or col.get('pattern') != '**/*.md':
+        raise ValueError('unsupported-scope-or-shell-update')
+    return raw, name
+
+
+def execute(command, env, log, timeout, lock_fd):
+    with log.open('wb') as output:
+        process = subprocess.Popen(command, env=env, stdout=output, stderr=subprocess.STDOUT,
+                                   start_new_session=True, pass_fds=(lock_fd,))
+        def drain():
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                return
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+            finally:
+                # The leader may exit before a descendant that ignores TERM.
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        def interrupted(number, _frame):
+            drain()
+            raise RuntimeError('runner-interrupted-signal-'+str(number))
+        handlers = {number: signal.getsignal(number) for number in (signal.SIGTERM, signal.SIGINT)}
+        try:
+            for number in handlers:
+                signal.signal(number, interrupted)
+            try:
+                return process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                drain()
+                raise RuntimeError('command-timeout')
+        finally:
+            for number, handler in handlers.items():
+                signal.signal(number, handler)
+
+
+def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, package_root):
+    vault = vault.resolve()
+    for path in (index, state):
+        if path.resolve() == vault or vault in path.resolve().parents:
+            raise ValueError('index-and-state-must-be-host-local-outside-vault')
+    if not index.is_file() or not qmd.is_absolute() or not qmd.is_file():
+        raise ValueError('existing-index-and-absolute-executable-required')
+    raw, collection = reviewed_config(config, expected, vault)
+    if not node.is_absolute() or not node.is_file() or not package_root.is_absolute() or not (package_root/'package.json').is_file():
+        raise ValueError('absolute-node-and-qmd-package-required')
+    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (state/'refresh.lock').open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return {'status': 'busy', 'as_of': stamp()}, 75
+        if (state/'repair-required.json').exists():
+            return {'status': 'repair-required', 'as_of': stamp()}, 2
+        previous = state/'last-run.json'
+        if previous.exists():
+            try:
+                prior = json.loads(previous.read_text())
+            except (OSError, ValueError):
+                return {'status': 'repair-required', 'reason': 'unreadable-prior-receipt', 'as_of': stamp()}, 2
+            if not isinstance(prior, dict) or prior.get('status') not in ('completed', 'failed'):
+                return {'status': 'repair-required', 'reason': 'interrupted-or-invalid-prior-run', 'as_of': stamp()}, 2
+            if prior.get('status') == 'failed' and prior.get('failed_stage') not in ('version', 'update', 'source-freshness'):
+                return {'status': 'repair-required', 'reason': 'prior-embedding-or-verification-failure', 'as_of': stamp()}, 2
+        run = Path(tempfile.mkdtemp(prefix='run-', dir=state))
+        frozen = run/'config'
+        frozen.mkdir()
+        (frozen/'index.yml').write_bytes(raw)
+        env = {key: os.environ[key] for key in ('HOME', 'PATH', 'TMPDIR', 'LANG', 'LC_ALL') if key in os.environ}
+        env.update(QMD_CONFIG_DIR=str(frozen), INDEX_PATH=str(index.resolve()))
+        receipt = {'status': 'running', 'started_at': stamp(), 'run': str(run),
+                   'config_sha256': expected, 'collection': collection, 'steps': [],
+                   'limits': 'Source and chunk coverage are checked at the recorded observation, not guaranteed afterward. Retrieval relevance and factual accuracy are not certified. Repair markers require independent reconciliation; the runner does not clear them.'}
+        save(run/'receipt.json', receipt)
+        save(state/'last-run.json', receipt)
+        stage = 'version'
+        try:
+            version_log = run/'version.log'
+            code = execute([str(qmd), '--version'], env, version_log, 30, lock.fileno())
+            if code or version_log.read_text().strip() != 'qmd 2.0.1':
+                raise RuntimeError('unsupported-qmd-version')
+            for stage in ('update', 'embed'):
+                log = run/(stage+'.log')
+                step = {'stage': stage, 'exit': None, 'log': str(log)}
+                receipt['steps'].append(step)
+                save(run/'receipt.json', receipt)
+                code = execute([str(qmd), stage], env, log, timeout, lock.fileno())
+                step['exit'] = code
+                if code:
+                    raise RuntimeError(stage+'-nonzero-exit')
+                if stage == 'embed':
+                    text = re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', log.read_text(errors='replace'))
+                    if re.search(r'\b[1-9][0-9]* chunks failed\b', text):
+                        raise RuntimeError('embedding-chunks-failed')
+                    if not any(s in text for s in ('All content hashes already have embeddings.',
+                                                  'No non-empty documents to embed.', 'Done! Embedded')):
+                        raise RuntimeError('unrecognized-embedding-result')
+            stage = 'verification'
+            if config.read_bytes() != raw:
+                raise RuntimeError('configuration-changed-during-run')
+            with closing(sqlite3.connect(index.resolve().as_uri()+'?mode=ro', uri=True)) as db:
+                pending = db.execute('SELECT COUNT(DISTINCT d.hash) FROM documents d WHERE d.active=1 AND d.collection=? AND NOT EXISTS (SELECT 1 FROM content_vectors v WHERE v.hash=d.hash AND v.seq=0)', (collection,)).fetchone()[0]
+            if pending:
+                raise RuntimeError('first-vector-backlog-remains')
+            log = run/'verification.log'
+            step = {'stage': stage, 'exit': None, 'log': str(log)}
+            receipt['steps'].append(step)
+            save(run/'receipt.json', receipt)
+            code = execute([str(node), str(Path(__file__).with_name('verify-search-index.mjs')),
+                            str(package_root), str(index.resolve()), str(vault), str(frozen/'index.yml')],
+                           env, log, timeout, lock.fileno())
+            step['exit'] = code
+            report = json.loads(log.read_text())
+            if (not isinstance(report, dict) or report.get('collection') != collection or
+                    report.get('config_sha256') != expected or report.get('qmd_version') != '2.0.1' or
+                    not isinstance(report.get('source_issues'), list) or not isinstance(report.get('chunk_issues'), list)):
+                raise RuntimeError('invalid-full-verification-report')
+            receipt['verification'] = report
+            if code or report.get('all_checks_pass') is not True or report['source_issues'] or report['chunk_issues']:
+                retryable = {'source-content-changed', 'source-not-indexed', 'indexed-source-no-longer-in-scope',
+                             'source-changed-during-audit', 'source-paths-changed-during-audit'}
+                if (code == 2 and report.get('all_checks_pass') is False and report['source_issues'] and
+                        not report['chunk_issues'] and all(isinstance(x, dict) and x.get('reason') in retryable for x in report['source_issues'])):
+                    stage = 'source-freshness'
+                raise RuntimeError('full-search-verification-failed')
+            receipt.update(status='completed', completed_at=stamp())
+            save(run/'receipt.json', receipt)
+            save(state/'last-success.json', receipt)
+            save(state/'last-run.json', receipt)
+            return receipt, 0
+        except Exception as exc:
+            receipt.update(status='failed', finished_at=stamp(), failed_stage=stage,
+                           error=type(exc).__name__+': '+str(exc))
+            save(run/'receipt.json', receipt)
+            save(state/'last-run.json', receipt)
+            if stage in ('embed', 'verification'):
+                save(state/'repair-required.json', receipt)
+            return receipt, 2
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    for flag in ('vault', 'config', 'index', 'state', 'qmd', 'node', 'package-root'):
+        parser.add_argument('--'+flag, type=Path, required=True)
+    parser.add_argument('--expected-config-sha256', required=True)
+    args = parser.parse_args()
+    try:
+        result, code = refresh(args.vault, args.config, args.expected_config_sha256,
+                               args.index, args.state, args.qmd, node=args.node, package_root=args.package_root)
+    except Exception as exc:
+        result, code = {'status': 'preflight-failed', 'error': type(exc).__name__+': '+str(exc)}, 2
+    print(json.dumps(result, indent=2))
+    raise SystemExit(code)

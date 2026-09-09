@@ -26,3 +26,12 @@ jobs:
         run: ./tests/feedback-throttle-test.sh
       - name: Reliability regression fixtures
         run: python3 -m unittest discover -s tests -p "test_reliability.py" -v
+      - name: Source completion and search refresh fixtures
+        run: |
+          python3 -m venv "$RUNNER_TEMP/workdesk-test-runtime"
+          "$RUNNER_TEMP/workdesk-test-runtime/bin/python" -m pip install PyYAML==6.0.3
+          export PATH="$RUNNER_TEMP/workdesk-test-runtime/bin:$PATH"
+          python -m unittest discover -s tests -p "test_complete_transcript.py" -v
+          python -W error::ResourceWarning -m unittest discover -s tests -p "test_refresh_search.py" -v
+      - name: Search chunk verifier unit cases
+        run: node --test tests/test_search_index_verifier.mjs

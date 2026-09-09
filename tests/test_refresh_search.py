@@ -1,0 +1,223 @@
+from pathlib import Path
+from contextlib import closing
+import fcntl
+import hashlib
+import importlib.util
+import json
+import sqlite3
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location('refresh_search', ROOT/'config/scripts/refresh-search.py')
+runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runner)
+
+
+class RefreshTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.vault = self.root/'vault'
+        self.vault.mkdir()
+        self.config = self.root/'index.yml'
+        self.data = {'collections': {'fixture': {'path': str(self.vault), 'pattern': '**/*.md'}}}
+        self.write_config()
+        self.index = self.root/'index.sqlite'
+        with closing(sqlite3.connect(self.index)) as db, db:
+            db.executescript('CREATE TABLE documents(collection TEXT,hash TEXT,active INTEGER); CREATE TABLE content_vectors(hash TEXT,seq INTEGER); INSERT INTO documents VALUES("fixture","a",1); INSERT INTO content_vectors VALUES("a",0);')
+        self.state = self.root/'state'
+        self.qmd = self.root/'qmd'
+        self.node = self.root/'fake-node'
+        self.package_root = self.root/'qmd-package'
+        self.package_root.mkdir()
+        (self.package_root/'package.json').write_text('{"version":"2.0.1"}')
+        self.fake()
+        self.fake_verifier()
+
+    def write_config(self):
+        self.config.write_text(json.dumps(self.data))
+        self.sha = hashlib.sha256(self.config.read_bytes()).hexdigest()
+
+    def fake(self, mode='success'):
+        self.qmd.write_text('#!/usr/bin/env python3\n'
+            'import sys,os,json,time\nfrom pathlib import Path\n'
+            f'mode={mode!r}\n'
+            'stage=sys.argv[1]\n'
+            'if stage=="--version":\n print("qmd 2.0.1");sys.exit(0)\n'
+            'config=Path(os.environ["QMD_CONFIG_DIR"])/"index.yml"\n'
+            'assert json.loads(config.read_text())["collections"]["fixture"].get("update") is None\n'
+            'if stage=="embed":\n'
+            ' if mode=="timeout": time.sleep(30)\n'
+            ' if mode=="partial": print("✓ Done! Embedded 1 chunks from 1 documents");print("⚠ 1 chunks failed")\n'
+            ' elif mode=="unknown": print("unexpected response")\n'
+            ' else: print("✓ All content hashes already have embeddings.")\n'
+            'sys.exit(3 if mode=="update-failure" and stage=="update" else 0)\n')
+        self.qmd.chmod(0o700)
+
+    def fake_verifier(self, mode='success'):
+        self.node.write_text('#!/usr/bin/env python3\n'
+            'import json,sys,hashlib\nfrom pathlib import Path\n'
+            f'mode={mode!r}\n'
+            'if mode=="malformed": print("not JSON");sys.exit(0)\n'
+            'raw=Path(sys.argv[-1]).read_bytes()\n'
+            'source=[{"reason":"source-content-changed"}] if mode=="stale" else []\n'
+            'chunks=[{"reason":"missing-chunk"}] if mode=="missing" else []\n'
+            'print(json.dumps({"collection":"fixture","qmd_version":"2.0.1","config_sha256":hashlib.sha256(raw).hexdigest(),"source_issues":source,"chunk_issues":chunks,"all_checks_pass":not(source or chunks)}))\n'
+            'sys.exit(2 if source or chunks else 0)\n')
+        self.node.chmod(0o700)
+
+    def run_refresh(self, timeout=10):
+        return runner.refresh(self.vault,self.config,self.sha,self.index,self.state,self.qmd,timeout,node=self.node,package_root=self.package_root)
+
+    def test_success_keeps_frozen_configuration_and_receipt(self):
+        before=self.config.read_bytes()
+        receipt,code=self.run_refresh()
+        self.assertEqual(code,0,receipt)
+        self.assertEqual([s['stage'] for s in receipt['steps']],['update','embed','verification'])
+        self.assertEqual((Path(receipt['run'])/'config/index.yml').read_bytes(),before)
+        self.assertEqual(self.config.read_bytes(),before)
+        self.assertEqual(json.loads((self.state/'last-success.json').read_text()),receipt)
+
+    def test_changed_config_and_custom_commands_refused_before_execution(self):
+        self.config.write_text('{}')
+        with self.assertRaisesRegex(ValueError,'hash-changed'):self.run_refresh()
+        self.assertFalse(self.state.exists())
+        self.data['collections']['fixture']['update']='echo unexpected'
+        self.write_config()
+        with self.assertRaisesRegex(ValueError,'shell-update'):self.run_refresh()
+        self.assertFalse(self.state.exists())
+
+    def test_other_vault_and_multiple_collections_refused(self):
+        self.data['collections']['fixture']['path']=str(self.root/'other')
+        self.write_config()
+        with self.assertRaisesRegex(ValueError,'vault-mismatch'):self.run_refresh()
+        self.data['collections']['second']=self.data['collections']['fixture'].copy()
+        self.write_config()
+        with self.assertRaisesRegex(ValueError,'one-reviewed'):self.run_refresh()
+
+    def test_missing_collection_path_rejected_even_when_cwd_is_vault(self):
+        import os
+        self.data['collections']['fixture'].pop('path');self.write_config()
+        previous=Path.cwd()
+        try:
+            os.chdir(self.vault)
+            with self.assertRaisesRegex(ValueError,'explicit-collection-path'):self.run_refresh()
+        finally:os.chdir(previous)
+
+    def test_busy_does_not_replace_last_success(self):
+        self.run_refresh();before=(self.state/'last-success.json').read_bytes()
+        with (self.state/'refresh.lock').open('a') as lock:
+            fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            receipt,code=self.run_refresh()
+        self.assertEqual((receipt['status'],code),('busy',75))
+        self.assertEqual((self.state/'last-success.json').read_bytes(),before)
+
+    def test_partial_embedding_zero_exit_requires_repair_and_preserves_success(self):
+        self.run_refresh();before=(self.state/'last-success.json').read_bytes()
+        self.fake('partial');receipt,code=self.run_refresh()
+        self.assertEqual(code,2)
+        self.assertIn('chunks-failed',receipt['error'])
+        self.assertTrue((self.state/'repair-required.json').exists())
+        self.fake();receipt,code=self.run_refresh()
+        self.assertEqual((receipt['status'],code),('repair-required',2))
+        self.assertEqual((self.state/'last-success.json').read_bytes(),before)
+
+    def test_update_failure_stops_before_embedding(self):
+        self.fake('update-failure');receipt,code=self.run_refresh()
+        self.assertEqual(code,2)
+        self.assertEqual([s['stage'] for s in receipt['steps']],['update'])
+        self.assertFalse((self.state/'last-success.json').exists())
+
+    def test_interrupted_or_unreadable_prior_receipt_blocks_retry(self):
+        self.state.mkdir()
+        for previous in ['{"status":"running"}', '{bad', '[]']:
+            with self.subTest(previous=previous):
+                (self.state/'last-run.json').write_text(previous)
+                receipt,code=self.run_refresh()
+                self.assertEqual((receipt['status'],code),('repair-required',2))
+                self.assertFalse(list(self.state.glob('run-*')))
+
+    def test_missing_first_vector_blocks_success(self):
+        with closing(sqlite3.connect(self.index)) as db, db:db.execute('DELETE FROM content_vectors')
+        receipt,code=self.run_refresh()
+        self.assertEqual(code,2)
+        self.assertIn('backlog-remains',receipt['error'])
+
+    def test_full_verifier_missing_chunk_blocks_success_despite_zero_cli_backlog(self):
+        self.fake_verifier('missing');receipt,code=self.run_refresh()
+        self.assertEqual(code,2)
+        self.assertEqual(receipt['failed_stage'],'verification')
+        self.assertTrue((self.state/'repair-required.json').exists())
+        self.assertFalse((self.state/'last-success.json').exists())
+
+    def test_source_only_staleness_can_retry_without_waiving_verification(self):
+        self.fake_verifier('stale');receipt,code=self.run_refresh()
+        self.assertEqual((code,receipt['failed_stage']),(2,'source-freshness'))
+        self.assertFalse((self.state/'repair-required.json').exists())
+        self.assertFalse((self.state/'last-success.json').exists())
+        self.fake_verifier();receipt,code=self.run_refresh()
+        self.assertEqual(code,0)
+        self.assertTrue(receipt['verification']['all_checks_pass'])
+
+    def test_malformed_verifier_output_is_not_success(self):
+        self.fake_verifier('malformed');receipt,code=self.run_refresh()
+        self.assertEqual(code,2)
+        self.assertTrue((self.state/'repair-required.json').exists())
+
+    def test_failure_receipt_blocks_retry_when_repair_marker_was_not_written(self):
+        self.state.mkdir()
+        for stage in ['embed','verification',None]:
+            with self.subTest(stage=stage):
+                (self.state/'last-run.json').write_text(json.dumps({'status':'failed','failed_stage':stage}))
+                receipt,code=self.run_refresh()
+                self.assertEqual((receipt['status'],code),('repair-required',2))
+                self.assertFalse(list(self.state.glob('run-*')))
+
+    def test_timeout_drains_descendant_before_return(self):
+        import os
+        import sys
+        import time
+        child_output=self.root/'late-child-output'
+        child_ready=self.root/'timeout-child-ready'
+        child_code='import time;from pathlib import Path;Path('+repr(str(child_ready))+').write_text("ready");time.sleep(1.3);Path('+repr(str(child_output))+').write_text("late")'
+        parent_code='import subprocess,time,sys;subprocess.Popen([sys.executable,"-c",'+repr(child_code)+']);time.sleep(30)'
+        with (self.root/'test.lock').open('a') as lock:
+            with self.assertRaisesRegex(RuntimeError,'timeout'):
+                runner.execute([sys.executable,'-c',parent_code],dict(os.environ),self.root/'timeout.log',1,lock.fileno())
+        self.assertTrue(child_ready.exists(),'Child must start before timeout is tested')
+        time.sleep(1.4)
+        self.assertFalse(child_output.exists())
+
+    def test_runner_term_drains_started_child_that_ignores_term(self):
+        import os
+        import subprocess
+        import sys
+        import time
+        ready=self.root/'child-ready';late=self.root/'child-late'
+        child='import signal,time,os;from pathlib import Path;signal.signal(signal.SIGTERM,signal.SIG_IGN);Path('+repr(str(ready))+').write_text(str(os.getpid()));time.sleep(30);Path('+repr(str(late))+').write_text("late")'
+        parent='import importlib.util,os,sys;from pathlib import Path;spec=importlib.util.spec_from_file_location("r",'+repr(str(ROOT/'config/scripts/refresh-search.py'))+');r=importlib.util.module_from_spec(spec);spec.loader.exec_module(r);lock=open('+repr(str(self.root/'signal.lock'))+',"a");r.execute([sys.executable,"-c",'+repr(child)+'],dict(os.environ),Path('+repr(str(self.root/'signal.log'))+'),30,lock.fileno())'
+        with (self.root/'parent.log').open('wb') as log:
+            process=subprocess.Popen([sys.executable,'-c',parent],stdout=log,stderr=log)
+            try:
+                deadline=time.monotonic()+5
+                while not ready.exists() and time.monotonic()<deadline and process.poll() is None:time.sleep(0.01)
+                self.assertTrue(ready.exists(),'Child must start before interruption is tested')
+                process.terminate();process.wait(timeout=15)
+                with self.assertRaises(ProcessLookupError):os.kill(int(ready.read_text()),0)
+                self.assertFalse(late.exists())
+                self.assertNotEqual(process.returncode,0)
+            finally:
+                if process.poll() is None:process.terminate();process.wait(timeout=15)
+
+    def test_unknown_output_and_timeout_require_repair(self):
+        for mode in ['unknown','timeout']:
+            with self.subTest(mode=mode):
+                self.state=self.root/('state-'+mode)
+                self.fake(mode);receipt,code=self.run_refresh(timeout=1)
+                self.assertEqual(code,2)
+                self.assertTrue((self.state/'repair-required.json').exists())
+
+
+if __name__=='__main__':unittest.main()
