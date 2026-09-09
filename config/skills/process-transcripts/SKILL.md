@@ -122,19 +122,23 @@ Take the extracted JSON and convert names → wikilinks:
 
 ### 5. Write the meeting note
 
-`atlas/meetings/{YYYY-MM-DD}-{topic-slug}.md` per [[../../objects/meeting]]. Build from the extracted JSON:
+`atlas/meetings/{YYYY-MM-DD}-{topic-slug}.md` per [[../../objects/meeting]]. Build from the source-reviewed extraction, not unverified JSON fields:
 
 Required body sections (always present):
-- **Summary** — Gemini's `summary` field
-- **Key Topics** — Gemini's `key_topics[]`
-- **Decisions** — Gemini's `decisions[]` (inline routine ones; durable ones get standalone notes per step 6)
-- **Action Items** — Gemini's `action_items[]` (full record; owner-based routing happens in step 7)
+- **Summary** — source-supported outcome and what changed in this meeting
+- **Key Topics** — reviewed topics with material qualifications preserved
+- **Decisions** — choices actually made, with any stated conditions; distinguish proposals and unresolved choices. If the supplied source establishes no decision, say so within that source's scope. Inline routine decisions; durable ones get standalone notes per step 6.
+- **Action Items** — reviewed commitments and unconfirmed assignments, with known owners and timing (full record; owner-based routing happens in step 7)
 - **Source** — wikilink back to the intake transcript file
 
 Optional sections (only when Gemini's arrays are non-empty):
 - **Key Quotes** — `key_quotes[]`
 - **People Observations** — `people_observations[]`
 - **Open Questions** — `open_questions[]`
+
+When the meeting relates to known work, follow its explicit project/entity links into relevant earlier meetings, decisions, actions and authorized communication records. Add a concise **Related Context** section when those sources explain the meeting's significance: what prior commitment it advances, changes or leaves unresolved, and which project is affected. Cite the specific dated record for each historical claim. Keep this context distinct from what was said or decided in the current transcript. A shared name or topic alone does not establish a relationship; an older note does not prove current status. Surface contradictions with both sources rather than silently choosing one. If relevant history is unavailable, state the limited coverage without treating missing context as proof that no earlier work exists.
+
+Make the next step visible for each affected project when supported by the sources. Distinguish an existing agreed action from an agent's suggested next step; do not convert a suggestion into a commitment, invent an owner or deadline, or close older work merely because this meeting discusses it. Reuse and link existing actions instead of creating duplicates. External communication access still requires the task's authorization; this context pass does not grant permission to contact anyone.
 
 Frontmatter:
 - `date:` is the meeting occurrence date supported by source metadata or explicit confirmation, never today's processing date or an import timestamp. If absent, leave it unknown and record the missing context. A full meeting record cannot be finalized until required context is resolved; a scoped extraction may return the requested known facts without inventing extra metadata or claiming full processing completion. Do not fabricate a date-based filename for an undated source.
