@@ -62,6 +62,10 @@ def execute(command, env, log, timeout, lock_fd, stderr_log=None):
         process = subprocess.Popen(command, env=env, stdout=output, stderr=errors,
                                    start_new_session=True, pass_fds=(lock_fd,))
         def drain():
+            # Cleanup runs outside the signal handler, after Popen.wait has
+            # unwound its locks. A repeated TERM must not interrupt that cleanup.
+            for number in (signal.SIGTERM, signal.SIGINT):
+                signal.signal(number, signal.SIG_IGN)
             try:
                 os.killpg(process.pid, signal.SIGTERM)
             except ProcessLookupError:
@@ -78,7 +82,6 @@ def execute(command, env, log, timeout, lock_fd, stderr_log=None):
                 except ProcessLookupError:
                     pass
         def interrupted(number, _frame):
-            drain()
             raise RuntimeError('runner-interrupted-signal-'+str(number))
         handlers = {number: signal.getsignal(number) for number in (signal.SIGTERM, signal.SIGINT)}
         try:
@@ -89,6 +92,9 @@ def execute(command, env, log, timeout, lock_fd, stderr_log=None):
             except subprocess.TimeoutExpired:
                 drain()
                 raise RuntimeError('command-timeout')
+            except BaseException:
+                drain()
+                raise
         finally:
             for number, handler in handlers.items():
                 signal.signal(number, handler)
@@ -110,7 +116,8 @@ def bound_qmd_command(qmd, node, package_root):
     return [str(node.resolve()), str(entry)]
 
 
-def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, package_root, minimum_source_files):
+def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, package_root, minimum_source_files,
+            reconcile_sha256=None):
     vault = vault.resolve()
     if type(minimum_source_files) is not int or minimum_source_files < 1:
         raise ValueError('positive-reviewed-minimum-source-files-required')
@@ -131,10 +138,17 @@ def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, p
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return {'status': 'busy', 'as_of': stamp()}, 75
-        if (state/'repair-required.json').exists():
-            return {'status': 'repair-required', 'as_of': stamp()}, 2
+        marker = state/'repair-required.json'
         previous = state/'last-run.json'
-        if previous.exists():
+        prior_bytes = marker_bytes = None
+        if reconcile_sha256 is not None:
+            prior_bytes = previous.read_bytes()
+            if hashlib.sha256(prior_bytes).hexdigest() != reconcile_sha256:
+                raise ValueError('reviewed-recovery-receipt-changed')
+            marker_bytes = marker.read_bytes() if marker.exists() else None
+        elif marker.exists():
+            return {'status': 'repair-required', 'as_of': stamp()}, 2
+        if reconcile_sha256 is None and previous.exists():
             try:
                 prior = json.loads(previous.read_text())
             except (OSError, ValueError):
@@ -147,16 +161,23 @@ def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, p
         frozen = run/'config'
         frozen.mkdir()
         (frozen/'index.yml').write_bytes(raw)
+        if reconcile_sha256 is not None:
+            (run/'prior-last-run.json').write_bytes(prior_bytes)
+            if marker_bytes is not None:
+                (run/'prior-repair-required.json').write_bytes(marker_bytes)
         env = {key: os.environ[key] for key in ('HOME', 'PATH', 'TMPDIR', 'LANG', 'LC_ALL') if key in os.environ}
         env.update(QMD_CONFIG_DIR=str(frozen), INDEX_PATH=str(index.resolve()))
         receipt = {'status': 'running', 'started_at': stamp(), 'run': str(run),
+                   'mode': 'reconcile' if reconcile_sha256 is not None else 'refresh',
+                   'reviewed_prior_receipt_sha256': reconcile_sha256,
                    'config_sha256': expected, 'collection': collection, 'steps': [],
                    'minimum_source_files': minimum_source_files,
                    'qmd_command': command, 'qmd_executable': str(qmd.resolve()),
                    'qmd_package': str(package_root.resolve()),
-                   'limits': 'Source and chunk coverage are checked at the recorded observation, not guaranteed afterward. Retrieval relevance and factual accuracy are not certified. Repair markers require independent reconciliation; the runner does not clear them.'}
+                   'limits': 'Source and chunk coverage are checked at the recorded observation, not guaranteed afterward. Retrieval relevance and factual accuracy are not certified. Ordinary refreshes never clear repair markers. Explicit reconciliation requires a reviewed prior-receipt hash and successful read-only verification.'}
         save(run/'receipt.json', receipt)
-        save(state/'last-run.json', receipt)
+        if reconcile_sha256 is None:
+            save(state/'last-run.json', receipt)
         stage = 'version'
         try:
             version_log = run/'version.log'
@@ -182,7 +203,7 @@ def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, p
                 raise RuntimeError('invalid-or-changing-source-inventory')
             if inventory['source_files'] < minimum_source_files:
                 raise RuntimeError('source-count-below-reviewed-minimum')
-            for stage in ('update', 'embed'):
+            for stage in (() if reconcile_sha256 is not None else ('update', 'embed')):
                 log = run/(stage+'.log')
                 step = {'stage': stage, 'exit': None, 'log': str(log)}
                 receipt['steps'].append(step)
@@ -225,18 +246,27 @@ def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, p
                         not report['chunk_issues'] and all(isinstance(x, dict) and x.get('reason') in retryable for x in report['source_issues'])):
                     stage = 'source-freshness'
                 raise RuntimeError('full-search-verification-failed')
+            if reconcile_sha256 is not None:
+                stage = 'reconciliation-state'
+                if (previous.read_bytes() != prior_bytes or
+                        (marker.read_bytes() if marker.exists() else None) != marker_bytes):
+                    raise RuntimeError('recovery-state-changed-during-verification')
             receipt.update(status='completed', completed_at=stamp())
             save(run/'receipt.json', receipt)
+            if reconcile_sha256 is not None and marker_bytes is not None:
+                marker.rename(run/'retired-repair-required.json')
             save(state/'last-success.json', receipt)
             save(state/'last-run.json', receipt)
             return receipt, 0
         except Exception as exc:
+            receipt.pop('completed_at', None)
             receipt.update(status='failed', finished_at=stamp(), failed_stage=stage,
                            error=type(exc).__name__+': '+str(exc))
             save(run/'receipt.json', receipt)
-            save(state/'last-run.json', receipt)
-            if stage in ('embed', 'verification'):
-                save(state/'repair-required.json', receipt)
+            if reconcile_sha256 is None:
+                save(state/'last-run.json', receipt)
+                if stage in ('embed', 'verification'):
+                    save(state/'repair-required.json', receipt)
             return receipt, 2
 
 
@@ -247,11 +277,14 @@ if __name__ == '__main__':
     parser.add_argument('--expected-config-sha256', required=True)
     parser.add_argument('--minimum-source-files', type=int, required=True,
                         help='Reviewed positive source-count floor; never inferred downward from recent runs')
+    parser.add_argument('--reconcile-reviewed-receipt-sha256',
+                        help='Explicit read-only reconciliation of this reviewed last-run.json hash; never runs update/embed')
     args = parser.parse_args()
     try:
         result, code = refresh(args.vault, args.config, args.expected_config_sha256,
                                args.index, args.state, args.qmd, node=args.node, package_root=args.package_root,
-                               minimum_source_files=args.minimum_source_files)
+                               minimum_source_files=args.minimum_source_files,
+                               reconcile_sha256=args.reconcile_reviewed_receipt_sha256)
     except Exception as exc:
         result, code = {'status': 'preflight-failed', 'error': type(exc).__name__+': '+str(exc)}, 2
     print(json.dumps(result, indent=2))

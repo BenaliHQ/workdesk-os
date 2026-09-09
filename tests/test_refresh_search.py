@@ -7,6 +7,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('refresh_search', ROOT/'config/scripts/refresh-search.py')
@@ -73,6 +74,7 @@ class RefreshTests(unittest.TestCase):
             ' print(json.dumps({"mode":"source-inventory","collection":"fixture","qmd_version":"2.0.1","config_sha256":hashlib.sha256(raw).hexdigest(),"source_files":source_count,"source_issues":issues,"all_checks_pass":not issues}))\n'
             ' sys.exit(2 if issues else 0)\n'
             'if mode=="malformed": print("not JSON");sys.exit(0)\n'
+            f'if mode=="state-change": Path({str(self.state/"last-run.json")!r}).write_text("newer owner receipt")\n'
             'if mode=="stderr-warning": print("synthetic Node warning",file=sys.stderr)\n'
             'raw=Path(sys.argv[-1]).read_bytes()\n'
             'source=[{"reason":"source-content-changed"}] if mode=="stale" else []\n'
@@ -81,8 +83,8 @@ class RefreshTests(unittest.TestCase):
             'sys.exit(2 if source or chunks else 0)\n')
         self.node.chmod(0o700)
 
-    def run_refresh(self, timeout=10):
-        return runner.refresh(self.vault,self.config,self.sha,self.index,self.state,self.qmd,timeout,node=self.node,package_root=self.package_root,minimum_source_files=self.minimum_source_files)
+    def run_refresh(self, timeout=10, reconcile_sha256=None):
+        return runner.refresh(self.vault,self.config,self.sha,self.index,self.state,self.qmd,timeout,node=self.node,package_root=self.package_root,minimum_source_files=self.minimum_source_files,reconcile_sha256=reconcile_sha256)
 
     def test_success_keeps_frozen_configuration_and_receipt(self):
         before=self.config.read_bytes()
@@ -232,6 +234,73 @@ class RefreshTests(unittest.TestCase):
             self.minimum_source_files=minimum
             with self.assertRaisesRegex(ValueError,'positive-reviewed-minimum'):self.run_refresh()
         self.assertFalse(self.state.exists())
+
+    def failed_state(self):
+        receipt,code=self.run_refresh();self.assertEqual(code,0,receipt)
+        self.fake('partial');receipt,code=self.run_refresh();self.assertEqual(code,2)
+        prior=(self.state/'last-run.json').read_bytes()
+        marker=(self.state/'repair-required.json').read_bytes()
+        success=(self.state/'last-success.json').read_bytes()
+        return prior,marker,success,hashlib.sha256(prior).hexdigest()
+
+    def test_reconciliation_preserves_failure_and_verifies_without_update_or_embed(self):
+        prior,marker,_,digest=self.failed_state()
+        before=self.index.read_bytes()
+        receipt,code=self.run_refresh(reconcile_sha256=digest)
+        self.assertEqual(code,0,receipt)
+        self.assertEqual(receipt['mode'],'reconcile')
+        self.assertEqual([s['stage'] for s in receipt['steps']],['source-preflight','verification'])
+        self.assertEqual((Path(receipt['run'])/'prior-last-run.json').read_bytes(),prior)
+        self.assertEqual((Path(receipt['run'])/'retired-repair-required.json').read_bytes(),marker)
+        self.assertEqual(self.index.read_bytes(),before)
+        self.assertFalse((self.state/'repair-required.json').exists())
+        self.fake();receipt,code=self.run_refresh();self.assertEqual(code,0,receipt)
+
+    def test_failed_reconciliation_preserves_blockers_and_last_success(self):
+        prior,marker,success,digest=self.failed_state()
+        for mode in ('missing','stale','malformed'):
+            with self.subTest(mode=mode):
+                self.fake_verifier(mode)
+                receipt,code=self.run_refresh(reconcile_sha256=digest)
+                self.assertEqual(code,2,receipt)
+                self.assertEqual((self.state/'last-run.json').read_bytes(),prior)
+                self.assertEqual((self.state/'repair-required.json').read_bytes(),marker)
+                self.assertEqual((self.state/'last-success.json').read_bytes(),success)
+                self.assertEqual([s['stage'] for s in receipt['steps']],['source-preflight','verification'])
+
+    def test_reconciliation_refuses_unreviewed_receipt_and_preserves_concurrent_state(self):
+        prior,marker,success,digest=self.failed_state()
+        with self.assertRaisesRegex(ValueError,'reviewed-recovery-receipt-changed'):
+            self.run_refresh(reconcile_sha256='0'*64)
+        self.assertEqual((self.state/'last-run.json').read_bytes(),prior)
+        self.fake_verifier('state-change')
+        receipt,code=self.run_refresh(reconcile_sha256=digest)
+        self.assertEqual(code,2,receipt)
+        self.assertIn('recovery-state-changed',receipt['error'])
+        self.assertEqual((self.state/'last-run.json').read_text(),'newer owner receipt')
+        self.assertEqual((self.state/'repair-required.json').read_bytes(),marker)
+        self.assertEqual((self.state/'last-success.json').read_bytes(),success)
+
+    def test_reconciliation_recovers_after_failure_between_marker_retirement_and_state_commit(self):
+        prior,marker,success,digest=self.failed_state()
+        original_save=runner.save
+        def failing_save(path,value):
+            if path==self.state/'last-success.json':raise OSError('simulated state commit failure')
+            original_save(path,value)
+        with patch.object(runner,'save',side_effect=failing_save):
+            failed,code=self.run_refresh(reconcile_sha256=digest)
+        self.assertEqual(code,2,failed)
+        self.assertNotIn('completed_at',failed)
+        self.assertEqual((self.state/'last-run.json').read_bytes(),prior)
+        self.assertEqual((self.state/'last-success.json').read_bytes(),success)
+        self.assertEqual((Path(failed['run'])/'retired-repair-required.json').read_bytes(),marker)
+        self.assertFalse((self.state/'repair-required.json').exists())
+        blocked,code=self.run_refresh()
+        self.assertEqual((code,blocked['status']),(2,'repair-required'))
+        recovered,code=self.run_refresh(reconcile_sha256=digest)
+        self.assertEqual(code,0,recovered)
+        self.assertEqual(recovered['mode'],'reconcile')
+        self.assertEqual((Path(recovered['run'])/'prior-last-run.json').read_bytes(),prior)
 
     def test_failure_receipt_blocks_retry_when_repair_marker_was_not_written(self):
         self.state.mkdir()
