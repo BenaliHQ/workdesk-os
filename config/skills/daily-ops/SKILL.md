@@ -41,7 +41,7 @@ Follow `config/signals/daily-plan.md`:
    - Surface stale work where `today - last-touched > 1.5 × expected-cadence`
    - For each `gtd/actions/waiting/` item, check whether it's unblocked or needs a nudge
 3. **Reason — GTD triage.** Assign every candidate a disposition (do-now / prioritize / delegate / defer / delete) and lead the plan with the 1–3 items that truly require the operator. See the signal's `## Reasoning — focus & GTD triage`.
-4. Apply the sparse-data fallback chain. Distinguish verified-empty, not-configured, unavailable, and stale sources. For unavailable calendar/CRM/search, report the failed read and its recovery step; never present unknown commitments as zero. Preserve useful vault-only output with an explicit coverage limit.
+4. Apply the sparse-data fallback chain. Keep coverage evidence separately for each source: what was read (including its time window), its result, and any observed failure or missing context. Distinguish available, verified-empty, not-configured, unavailable, not-checked, and stale. Report only a failure cause supported by that source's result; leave the cause unknown otherwise. A calendar/CRM/search outage does not establish that local action, waiting, project or inbox notes are unreadable. Continue authorized local reads, and distinguish an absent supplied input or an out-of-scope read from a failed read. Never present unknown commitments as zero. Preserve useful vault-only output with an explicit coverage limit.
 5. Apply tonality from `operator-profile.role` and `operator-profile.work-mode`. If `first-30-days-mode: active`, lean toward setup-oriented framing; otherwise neutral. If either field is empty (early state), default to neutral.
 
 Write to `intel/briefings/daily/{YYYY-MM-DD}-daily-plan.md` with the signal frontmatter:
@@ -55,6 +55,8 @@ sources: ["..."]
 schedule: daily
 ---
 ```
+
+Before the body sections, include a compact Coverage summary of the sources used and material gaps, with evidence and a recovery step where known. Check each omission against its own source result; do not borrow another source's failure explanation.
 
 Body sections per the declaration:
 1. Today's commitments + relevant context

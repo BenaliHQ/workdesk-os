@@ -91,7 +91,7 @@ Rules of thumb:
 
 ## Sparse-data fallback chain
 
-Try in order; layers with no data are silently skipped:
+Try in order. Skip verified-empty layers when selecting work, but retain material coverage gaps in the output. An unread, unavailable, not-configured or stale source is not a verified-empty layer.
 
 1. Calendar commitments (today + next `{lookahead}` days, scoped per `{scope}`)
 2. `gtd/actions/next/` (sorted by `parent:` recency)
@@ -101,7 +101,7 @@ Try in order; layers with no data are silently skipped:
 6. Unread inbox items (with backlog warning if >20)
 7. Stale contexts needing attention
 
-If all 7 layers return empty (true cold-start), produce a **setup-oriented plan**: "Nothing scheduled and nothing in next-actions. First steps to seed the vault: …" — never a hollow report.
+If all 7 layers are verified empty (true cold-start), produce a **setup-oriented plan**: "Nothing scheduled and nothing in next-actions. First steps to seed the vault: …" — never a hollow report. If some layers were not checked or could not be read, state the limited coverage and use the available sources; do not declare a cold-start from failed reads.
 
 ## Output
 
@@ -192,4 +192,6 @@ Surface ad-hoc generation when:
 
 ## Coverage and unresolved questions
 
-Distinguish empty from unavailable or stale calendar, CRM, search and other sources. Report the coverage limit and recovery step; do not infer no commitments from a failed read. An unresolved QUESTION remains active regardless of age unless its substance has a durable linked record and explicit disposition. Age never resolves a truth conflict.
+For each source, retain what was read, the time window, the result and any observed error. Distinguish available, verified-empty, not-configured, unavailable, not-checked and stale. Include a compact Coverage summary with material gaps and recovery steps where known. A missing supplied input or an out-of-scope read is not a failed provider request. Never attribute a local action, waiting, project or inbox omission to a calendar/CRM/search outage unless an actual dependency and failure are established. Continue authorized local reads independently. Do not infer no commitments from a failed read or invent its cause.
+
+An unresolved QUESTION remains active regardless of age unless its substance has a durable linked record and explicit disposition. Age never resolves a truth conflict.
