@@ -71,9 +71,11 @@ Pre-load vault context that downstream phases need (do this BEFORE the Gemini ca
 Run the extraction script, capturing to a **unique** temp file (never a shared fixed path like `/tmp/extraction.json` — under Parallel backlog mode below, concurrent agents would clobber each other):
 
 ```bash
-EXTRACT_JSON=$(mktemp /tmp/extraction-XXXXXX.json)
+EXTRACT_JSON=$(mktemp "${TMPDIR:-/tmp}/extraction.XXXXXX") || exit 2
 bash config/scripts/extract-transcript-gemini.sh {transcript-path} > "$EXTRACT_JSON"
 ```
+
+Use the runtime's authorized temporary directory. In a confined workspace, set `TMPDIR` to an existing permitted directory before running the example; do not write outside that boundary just because the example has a default. Preserve the extractor's actual exit code before running diagnostic commands.
 
 The script:
 - Reads the prompt from `config/skills/process-transcripts/prompt.txt`
@@ -211,7 +213,15 @@ Completion requires a successful helper receipt and current revalidation; `proce
 
 ### 10. Log
 
-Finish the existing session-log processing record with the source identity, actual authoring agent, output links, validated completion receipt path, and any remaining work. If processing stopped before completion, record that state without inventing a completion receipt. Preserve earlier attempts when adding a recovery result.
+Finish the existing session-log processing record on both success and failure. Include:
+
+- Source identity/link and observed source hash.
+- Authoring agent/runtime; requested and reported model separately. Use `unknown` for unavailable model metadata rather than guessing from an alias.
+- Execution context (live workflow or synthetic fixture), attempted stage/command, observed exit code, and which provider or verification steps actually ran.
+- Output links and validated completion receipt, or an explicit incomplete state with no receipt.
+- Remaining work justified by the observed failure. A simulated error tests handling; it does not establish that a live account or operator configuration is broken.
+
+Preserve earlier attempts when adding a recovery result. Before returning, check that the record and final response agree about what ran, what changed and what remains.
 
 Tool hooks may record some file operations, but coverage depends on the runtime and tool used; the Python completion command is not recognized by the current semantic event hook. An event row is supplementary observability, not proof that processing or this handoff record is complete.
 
