@@ -176,11 +176,12 @@ Obtain the host-local Python path using `bash config/scripts/migrate.sh source-r
 
 ```bash
 "<runtime-python>" config/scripts/complete-transcript.py \
-  --vault "$PWD" --verify-outputs \
+  --vault "$PWD" --verify-extraction \
+  --source "system/intake/<source>.md" \
   --output "atlas/meetings/<meeting>.md"
 ```
 
-This checks declared YAML properties and required outgoing links, including when extraction stops before archival. It rejects duplicate property keys, a meeting transcript stored as a YAML list instead of a wikilink string, and invalid attendee property types. It preserves legacy notes without frontmatter and is not a complete object-schema validator. Run `bash config/scripts/check-wikilinks.sh <raw-source-path>` separately on the raw source. A plain-text source path is not a wikilink; a note with no outgoing wikilinks fails completion. Zero broken required references is necessary, but does not prove factual correctness. Review attendee attribution, ownership and uncertainty separately. Record source identity, output paths, verification result and any remaining work in a processing receipt in the existing session-log note (source ID/hash, output paths, verification, remaining work).
+This single read-only gate checks declared YAML properties, required outgoing output links and the retained source's links, including when extraction stops before archival. Use the actual source path, which may already be under `system/transcripts/`. It rejects duplicate property keys, a meeting transcript stored as a YAML list instead of a wikilink string, and invalid attendee property types. It preserves legacy notes without frontmatter and is not a complete object-schema validator. Output-only verification does not satisfy this gate. A plain-text source path is not a wikilink; a note with no outgoing wikilinks fails completion. Zero broken required references is necessary, but does not prove factual correctness. Review attendee attribution, ownership and uncertainty separately. Record source identity, output paths, verification result and any remaining work in a processing receipt in the existing session-log note (source ID/hash, output paths, verification, remaining work).
 
 ### 9. Mark complete, archive, and reconcile
 

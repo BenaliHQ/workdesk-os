@@ -100,6 +100,17 @@ def verify(root, outputs, source):
     subprocess.run(['bash', str(checker), str(source)], cwd=root, check=True)
 
 
+def verify_extraction(root, outputs, source_name):
+    """Read-only extraction gate: check outputs and their retained source together."""
+    root = root.resolve()
+    source = safe_path(root, source_name)
+    if Path(source_name).parts[:2] not in (('system', 'intake'), ('system', 'transcripts')) or source.suffix != '.md' or not source.is_file():
+        raise ValueError('Expected an existing intake or transcript Markdown source')
+    if not outputs:
+        raise ValueError('Extraction verification requires outputs')
+    verify(root, outputs, source)
+
+
 def verify_receipt(root, receipt):
     """Read-only revalidation; mutable receipts do not prove factual accuracy."""
     root = root.resolve()
@@ -310,9 +321,15 @@ if __name__ == '__main__':
     parser.add_argument('--reason', help='Reviewed source-grounded reason for a no-content disposition')
     parser.add_argument('--verify-receipt', type=Path, help='Read-only revalidation of an existing completion')
     parser.add_argument('--verify-outputs', action='store_true', help='Read-only declared-property and link checks for --output notes')
+    parser.add_argument('--verify-extraction', action='store_true', help='Read-only source links plus declared properties and links for --output notes')
     parser.add_argument('--resume-receipt', type=Path, help='Recover an interrupted transition with unchanged source/output hashes')
     args = parser.parse_args()
-    if args.verify_outputs:
+    if args.verify_extraction:
+        if not args.source or not args.output or args.verify_outputs or args.receipts or args.verify_receipt or args.resume_receipt or args.reason or args.disposition != 'processed':
+            parser.error('Extraction verification requires --source and --output and cannot be combined with other modes')
+        verify_extraction(args.vault, args.output, args.source)
+        print('Source links and output properties/links verified; no archival performed; factual review remains separate.')
+    elif args.verify_outputs:
         if not args.output or args.source or args.receipts or args.verify_receipt or args.resume_receipt or args.reason or args.disposition != 'processed':
             parser.error('Output verification requires --output and cannot be combined with completion arguments')
         verify_outputs(args.vault.resolve(), args.output)

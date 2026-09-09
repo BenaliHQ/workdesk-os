@@ -96,6 +96,42 @@ class CompletionTests(unittest.TestCase):
         self.assertEqual(target.read_text(), 'Other source\n')
         self.assertEqual(self.source.read_bytes(), self.raw)
 
+    def test_extraction_gate_checks_source_and_preserves_all_files(self):
+        before = {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        command = [sys.executable, str(PRODUCT/'config/scripts/complete-transcript.py'), '--vault', str(self.root), '--verify-extraction', '--source', 'system/intake/S9.md', '--output', 'atlas/meetings/M9.md']
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(before, {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
+        self.source.write_bytes(self.raw + b'Broken source reference: [[missing-source-target]]\n')
+        before = {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('missing-source-target', result.stdout)
+        self.assertEqual(before, {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
+
+    def test_extraction_gate_rejects_missing_or_symlink_source(self):
+        for name in ('system/intake/missing.md', 'atlas/meetings/M9.md'):
+            with self.subTest(source=name), self.assertRaises(ValueError):
+                completion.verify_extraction(self.root, ['atlas/meetings/M9.md'], name)
+        alias = self.root/'system/intake/alias.md'
+        alias.symlink_to(self.source)
+        with self.assertRaises(ValueError):
+            completion.verify_extraction(self.root, ['atlas/meetings/M9.md'], 'system/intake/alias.md')
+        self.assertEqual(self.source.read_bytes(), self.raw)
+
+    def test_extraction_gate_rejects_bad_output_even_with_valid_source(self):
+        self.output.write_text('---\ntranscript: [[S9]]\n---\nSource: [[S9]]\n')
+        with self.assertRaisesRegex(ValueError, 'quoted wikilink'):
+            completion.verify_extraction(self.root, ['atlas/meetings/M9.md'], 'system/intake/S9.md')
+        self.assertEqual(self.source.read_bytes(), self.raw)
+
+    def test_extraction_gate_does_not_accept_completion_arguments(self):
+        command = [sys.executable, str(PRODUCT/'config/scripts/complete-transcript.py'), '--vault', str(self.root), '--verify-extraction', '--source', 'system/intake/S9.md', '--output', 'atlas/meetings/M9.md', '--receipts', str(self.receipts)]
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(self.source.read_bytes(), self.raw)
+        self.assertEqual(list(self.receipts.iterdir()), [])
+
     def test_postcheck_failure_never_marks_complete(self):
         actual = completion.verify
         calls = []
