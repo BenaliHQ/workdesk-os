@@ -6,6 +6,7 @@ import json
 import math
 from pathlib import Path
 import shutil
+import sqlite3
 import subprocess
 import time
 
@@ -51,7 +52,41 @@ def plugin_status(plugin, data):
         return None, None, None, None, ['backup-plugin-state-unavailable']
 
 
-def inspect(vault):
+def qmd_index_status(index, vault):
+    """Observe QMD 2.x metadata only; never initialize or modify its database."""
+    result = {'index': str(index), 'state': 'unavailable',
+              'freshness': 'unverified', 'semantic_completeness': 'unverified',
+              'limits': ['Metadata does not prove current source coverage, all chunk embeddings, or retrieval quality.']}
+    if not index.is_file():
+        return dict(result, reason='index-file-missing')
+    try:
+        connection = sqlite3.connect(index.resolve().as_uri() + '?mode=ro', uri=True, timeout=2)
+        try:
+            connection.execute('PRAGMA query_only = ON')
+            collections = connection.execute('SELECT name, path, pattern FROM store_collections').fetchall()
+            matches = [(name, pattern) for name, path, pattern in collections
+                       if Path(path).resolve() == vault.resolve()]
+            if not matches:
+                return dict(result, reason='vault-collection-missing')
+            observations = []
+            for name, pattern in matches:
+                count, hashes = connection.execute(
+                    'SELECT COUNT(*), COUNT(DISTINCT hash) FROM documents WHERE active=1 AND collection=?',
+                    (name,)).fetchone()
+                pending = connection.execute(
+                    'SELECT COUNT(DISTINCT d.hash) FROM documents d WHERE d.active=1 AND d.collection=? '
+                    'AND NOT EXISTS (SELECT 1 FROM content_vectors v WHERE v.hash=d.hash AND v.seq=0)',
+                    (name,)).fetchone()[0]
+                observations.append({'name': name, 'pattern': pattern, 'active_documents': count,
+                                     'unique_hashes': hashes, 'hashes_without_first_vector': pending})
+            return dict(result, state='index-observed', collections=observations)
+        finally:
+            connection.close()
+    except (sqlite3.Error, OSError, ValueError, TypeError):
+        return dict(result, reason='index-unreadable-or-unsupported-schema')
+
+
+def inspect(vault, qmd_index=None):
     def git(*args):
         r = subprocess.run(["git", "-C", str(vault), *args], capture_output=True, text=True)
         return r.stdout.strip() if r.returncode == 0 else None
@@ -88,6 +123,7 @@ def inspect(vault):
                    'head_matches_local_push_receipt': bool(head and pushed and head == pushed), 'oldest_unpushed_age_seconds': age,
                    'automatic_commit_plugin_enabled': enabled, 'automatic_commits_enabled': automatic, 'commit_interval_minutes': cadence, 'automatic_pull_enabled': auto_pull},
         'tools_on_this_path': {name: bool(shutil.which(name)) for name in ['claude','codex','gws','qbo','qmd','ntn','keep-markdown','infisical']},
+        'search': qmd_index_status(qmd_index, vault) if qmd_index else {'state': 'not-checked', 'reason': 'no-explicit-qmd-index'},
         'safety': {'codex_wiring_present': (vault/'.codex/hooks.json').is_file(),
                    'verifier_present': (Path.home()/'.claude/hooks/verify-send-phrase.py').is_file(),
                    'phrase_present': (Path.home()/'.claude/email-send-phrase').is_file(),
@@ -98,5 +134,6 @@ def inspect(vault):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--vault', type=Path, default=Path(__file__).resolve().parents[2])
+    parser.add_argument('--qmd-index', type=Path, help='Optional explicit QMD SQLite index; metadata is inspected read-only')
     args = parser.parse_args()
-    print(json.dumps(inspect(args.vault.resolve()), indent=2))
+    print(json.dumps(inspect(args.vault.resolve(), args.qmd_index), indent=2))

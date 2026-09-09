@@ -66,6 +66,36 @@ class CopyTests(unittest.TestCase):
    with self.assertRaises(c.ChangedTarget):c.checked_copy(src,dst,None)
 
 class HealthTests(unittest.TestCase):
+ def test_qmd_metadata_missing_foreign_partial_and_complete_first_vectors(self):
+  import sqlite3
+  spec=importlib.util.spec_from_file_location('health',W/'config/scripts/workdesk-health.py');h=importlib.util.module_from_spec(spec);spec.loader.exec_module(h)
+  with tempfile.TemporaryDirectory() as t:
+   root=Path(t);index=root/'index.sqlite';vault=root/'vault'
+   self.assertEqual(h.qmd_index_status(index,vault)['reason'],'index-file-missing')
+   self.assertFalse(index.exists())
+   db=sqlite3.connect(index)
+   db.executescript('CREATE TABLE store_collections(name TEXT,path TEXT,pattern TEXT); CREATE TABLE documents(collection TEXT,hash TEXT,active INTEGER); CREATE TABLE content_vectors(hash TEXT,seq INTEGER);')
+   db.execute('INSERT INTO store_collections VALUES(?,?,?)',('test',str(root/'other'),'**/*.md'));db.commit()
+   self.assertEqual(h.qmd_index_status(index,vault)['reason'],'vault-collection-missing')
+   db.execute('UPDATE store_collections SET path=?',(str(vault),))
+   db.executemany('INSERT INTO documents VALUES(?,?,?)',[('test','a',1),('test','a',1),('test','b',1),('test','old',0)])
+   db.executemany('INSERT INTO content_vectors VALUES(?,?)',[('a',0),('b',1)]);db.commit()
+   before=index.read_bytes();result=h.qmd_index_status(index,vault)
+   self.assertEqual(index.read_bytes(),before)
+   self.assertEqual(result['collections'][0]['active_documents'],3)
+   self.assertEqual(result['collections'][0]['unique_hashes'],2)
+   self.assertEqual(result['collections'][0]['hashes_without_first_vector'],1)
+   db.execute('INSERT INTO content_vectors VALUES(?,?)',('b',0));db.commit();db.close()
+   result=h.qmd_index_status(index,vault)
+   self.assertEqual(result['collections'][0]['hashes_without_first_vector'],0)
+   self.assertEqual(result['semantic_completeness'],'unverified')
+   self.assertEqual(result['freshness'],'unverified')
+ def test_qmd_invalid_schema_is_unknown_without_database_mutation(self):
+  spec=importlib.util.spec_from_file_location('health',W/'config/scripts/workdesk-health.py');h=importlib.util.module_from_spec(spec);spec.loader.exec_module(h)
+  with tempfile.TemporaryDirectory() as t:
+   index=Path(t)/'bad.sqlite';index.write_bytes(b'not a database')
+   self.assertEqual(h.qmd_index_status(index,Path(t))['reason'],'index-unreadable-or-unsupported-schema')
+   self.assertEqual(index.read_bytes(),b'not a database')
  def test_backup_plugin_states_are_distinguished(self):
   spec=importlib.util.spec_from_file_location('health',W/'config/scripts/workdesk-health.py');h=importlib.util.module_from_spec(spec);spec.loader.exec_module(h)
   with tempfile.TemporaryDirectory() as t:
