@@ -32,7 +32,10 @@ class RefreshTests(unittest.TestCase):
         self.node = self.root/'fake-node'
         self.package_root = self.root/'qmd-package'
         self.package_root.mkdir()
-        (self.package_root/'package.json').write_text('{"version":"2.0.1"}')
+        (self.package_root/'package.json').write_text('{"version":"2.0.1","bin":{"qmd":"bin/qmd"}}')
+        (self.package_root/'bin').mkdir()
+        (self.package_root/'dist/cli').mkdir(parents=True)
+        self.qmd.symlink_to(self.package_root/'bin/qmd')
         self.minimum_source_files=1
         self.fake()
         self.fake_verifier()
@@ -56,10 +59,12 @@ class RefreshTests(unittest.TestCase):
             ' else: print("✓ All content hashes already have embeddings.")\n'
             'sys.exit(3 if mode=="update-failure" and stage=="update" else 0)\n')
         self.qmd.chmod(0o700)
+        (self.package_root/'dist/cli/qmd.js').write_text(self.qmd.read_text())
 
     def fake_verifier(self, mode='success', source_count=1, inventory_mode='success'):
         self.node.write_text('#!/usr/bin/env python3\n'
-            'import json,sys,hashlib\nfrom pathlib import Path\n'
+            'import json,sys,hashlib,os\nfrom pathlib import Path\n'
+            'if sys.argv[1].endswith("/dist/cli/qmd.js"): os.execv(sys.executable,[sys.executable,*sys.argv[1:]])\n'
             f'mode={mode!r}\n'
             f'source_count={source_count!r}\ninventory_mode={inventory_mode!r}\n'
             'if sys.argv[-1]=="--inventory-only":\n'
@@ -104,6 +109,21 @@ class RefreshTests(unittest.TestCase):
         self.assertEqual(code,2)
         self.assertEqual(receipt['steps'],[])
         self.assertIn('unsupported-qmd-version',receipt['error'])
+
+    def test_cli_and_verifier_use_reviewed_runtime_and_package(self):
+        receipt,code=self.run_refresh()
+        self.assertEqual(code,0,receipt)
+        self.assertEqual(receipt['qmd_command'],[str(self.node.resolve()),str((self.package_root/'dist/cli/qmd.js').resolve())])
+        self.assertEqual(receipt['qmd_executable'],str(self.qmd.resolve()))
+
+    def test_other_same_version_executable_refused_before_state_or_index_changes(self):
+        other=self.root/'other-qmd'
+        other.write_text(self.qmd.read_text());other.chmod(0o700)
+        self.qmd=other
+        before=self.index.read_bytes()
+        with self.assertRaisesRegex(ValueError,'executable-package-mismatch'):self.run_refresh()
+        self.assertFalse(self.state.exists())
+        self.assertEqual(self.index.read_bytes(),before)
 
     def test_other_vault_and_multiple_collections_refused(self):
         self.data['collections']['fixture']['path']=str(self.root/'other')
@@ -154,12 +174,6 @@ class RefreshTests(unittest.TestCase):
                 receipt,code=self.run_refresh()
                 self.assertEqual((receipt['status'],code),('repair-required',2))
                 self.assertFalse(list(self.state.glob('run-*')))
-
-    def test_missing_first_vector_blocks_success(self):
-        with closing(sqlite3.connect(self.index)) as db, db:db.execute('DELETE FROM content_vectors')
-        receipt,code=self.run_refresh()
-        self.assertEqual(code,2)
-        self.assertIn('backlog-remains',receipt['error'])
 
     def test_full_verifier_missing_chunk_blocks_success_despite_zero_cli_backlog(self):
         self.fake_verifier('missing');receipt,code=self.run_refresh()

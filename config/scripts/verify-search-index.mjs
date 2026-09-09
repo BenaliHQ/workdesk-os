@@ -32,6 +32,7 @@ export async function verify({packageRoot,index,vault,config,inventoryOnly=false
   if(JSON.parse(readFileSync(resolve(packageRoot,'package.json'),'utf8')).version!=='2.0.1')throw Error('Unsupported QMD version');
   const YAML=require('yaml');const glob=require('fast-glob');const Database=require('better-sqlite3');
   const api=await import(pathToFileURL(resolve(packageRoot,'dist/store.js')).href);
+  const {disposeDefaultLlamaCpp}=await import(pathToFileURL(resolve(packageRoot,'dist/llm.js')).href);
   const {loadSqliteVec}=await import(pathToFileURL(resolve(packageRoot,'dist/db.js')).href);
   const raw=readFileSync(config);const settings=YAML.parse(raw.toString());
   const entries=Object.entries(settings?.collections||{});
@@ -100,7 +101,10 @@ export async function verify({packageRoot,index,vault,config,inventoryOnly=false
       empty_files:empty,indexed_documents:rows.length,indexed_hashes:hashes.size,expected_chunks:expected,
       source_issues:sourceIssues,chunk_issues:chunkIssues,all_checks_pass:!sourceIssues.length&&!chunkIssues.length,
       limits:'Checks observed source contents and complete expected chunk presence/positions/model. Does not judge retrieval relevance, factual accuracy, or changes after this observation.'};
-  }finally{db.exec('ROLLBACK');db.close();}
+  }finally{
+    try{db.exec('ROLLBACK');db.close();}
+    finally{await disposeDefaultLlamaCpp();}
+  }
 }
 
 async function main(){

@@ -11,15 +11,17 @@ Hybrid semantic and keyword search over vault markdown files. Use for finding co
 
 CLI command: `qmd`. Resolve it with `command -v qmd` in the actual agent or job environment; installation paths differ by host. An executable being present does not establish that the intended vault is indexed.
 
+Select the reviewed Workdesk index explicitly on every command, including retrieval of a result. The examples below use a separately configured named index, `workdesk-os`. Confirm that its configuration exists and points at this operating vault before use. Do not infer that the default index belongs to Workdesk: another vault may already own it. Provision and verify the named index before adopting these commands; an absent named index is unavailable coverage, not permission to repoint an existing index. If the installation uses another reviewed name, use that name consistently.
+
 ## Common Commands
 
 | Command | What it does | Example |
 |---|---|---|
-| `qmd query "topic"` | Semantic + keyword hybrid search | `qmd query "client onboarding process"` |
-| `qmd status` | Check index health and status | `qmd status` |
-| `qmd collection list` | Check configured scope | `qmd collection list` |
-| `qmd search "topic" --json` | Keyword search without a model | `qmd search "ownership contract" --json` |
-| `qmd multi-get <reference> --json` | Read indexed content as JSON | `qmd multi-get qmd://workdesk/path/to/note.md --json` |
+| `qmd --index workdesk-os query "topic"` | Semantic + keyword hybrid search | `qmd --index workdesk-os query "client onboarding process"` |
+| `qmd --index workdesk-os status` | Check index health and status | `qmd --index workdesk-os status` |
+| `qmd --index workdesk-os collection list` | Check configured scope | `qmd --index workdesk-os collection list` |
+| `qmd --index workdesk-os search "topic" --json` | Keyword search without a model | `qmd --index workdesk-os search "ownership contract" --json` |
+| `qmd --index workdesk-os multi-get <reference> --json` | Read indexed content as JSON | `qmd --index workdesk-os multi-get qmd://workdesk/path/to/note.md --json` |
 
 ## Readiness and source verification
 
@@ -33,6 +35,10 @@ CLI command: `qmd`. Resolve it with `command -v qmd` in the actual agent or job 
 ## Known Limitations
 
 The optional `config/scripts/refresh-search.py` runner requires the pinned source-processing Python runtime with PyYAML 6.0.3, explicit absolute Node/QMD/package paths, an existing host-local index, a host-local state directory, the reviewed configuration SHA-256, and a positive `--minimum-source-files` floor. Use its `--help` for required arguments. Its companion `verify-search-index.mjs` must be installed beside it. The adapter currently supports QMD 2.0.1, including its optional hexadecimal Git suffix; revalidate before changing that version.
+
+The runner verifies that the QMD executable resolves to the declared package's `bin/qmd`, then invokes that package's CLI entry point with the explicit Node runtime. The verifier uses that same resolved runtime and package. This avoids the shell shim choosing another Node or Bun through PATH. Verify native-module compatibility with that Node before installation; matching the QMD version alone is insufficient. The runner freezes the explicitly supplied configuration under its private run directory and addresses the SQLite index by absolute path, independently of interactive named-index defaults.
+
+Record the embedding model file's SHA-256 with initial index and evaluation evidence. The same model alias or cache filename can contain different bytes on two hosts; do not transfer vectors between them or claim equivalent retrieval without checking model identity. Prefer independently verified host-local indexes when the model files differ. The full verifier uses QMD's own SQLite library and tokenizer, and awaits the library's model cleanup before exit. A passing JSON report followed by a nonzero or aborted process is still a failed verification.
 
 Choose the source-count floor from a verified, fully available vault inventory and record the permitted margin when installing the job. Count non-empty Markdown files within the reviewed QMD scope, not every filesystem entry. The runner reads that scope before any update and refuses a count below the fixed floor. An empty folder, an incomplete Sync copy or a changing inventory cannot replace the last-success receipt. Never lower the floor automatically after a failure; first restore source availability or review an intentional change in scope. A recovered inventory may retry without an index-repair override because the refused attempt did not start update/embed. The full post-update check also enforces the floor. These are observations before and after indexing, not an atomic filesystem snapshot; source changes between them remain possible.
 

@@ -6,7 +6,7 @@ refresh invocations must use this runner's lock; it cannot lock an unrelated
 manual QMD process. Receipts describe this run, not current source completeness.
 """
 import argparse
-from contextlib import closing, ExitStack
+from contextlib import ExitStack
 import datetime as dt
 import fcntl
 import hashlib
@@ -15,7 +15,6 @@ import os
 from pathlib import Path
 import re
 import signal
-import sqlite3
 import subprocess
 import tempfile
 
@@ -95,6 +94,22 @@ def execute(command, env, log, timeout, lock_fd, stderr_log=None):
                 signal.signal(number, handler)
 
 
+def bound_qmd_command(qmd, node, package_root):
+    package_root = package_root.resolve()
+    manifest = json.loads((package_root/'package.json').read_text())
+    bins = manifest.get('bin') if isinstance(manifest, dict) else None
+    if not isinstance(bins, dict) or manifest.get('version') != '2.0.1' or bins.get('qmd') != 'bin/qmd':
+        raise ValueError('unsupported-qmd-package-manifest')
+    binary = (package_root/'bin/qmd').resolve()
+    entry = (package_root/'dist/cli/qmd.js').resolve()
+    if (qmd.resolve() != binary or package_root not in binary.parents or
+            package_root not in entry.parents or not entry.is_file()):
+        raise ValueError('qmd-executable-package-mismatch')
+    # The package shell shim chooses Node from PATH (or Bun). Use the explicitly
+    # reviewed Node for both CLI and verifier so native module ABI cannot diverge.
+    return [str(node.resolve()), str(entry)]
+
+
 def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, package_root, minimum_source_files):
     vault = vault.resolve()
     if type(minimum_source_files) is not int or minimum_source_files < 1:
@@ -107,6 +122,9 @@ def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, p
     raw, collection = reviewed_config(config, expected, vault)
     if not node.is_absolute() or not node.is_file() or not package_root.is_absolute() or not (package_root/'package.json').is_file():
         raise ValueError('absolute-node-and-qmd-package-required')
+    node = node.resolve()
+    package_root = package_root.resolve()
+    command = bound_qmd_command(qmd, node, package_root)
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (state/'refresh.lock').open('a') as lock:
         try:
@@ -134,13 +152,15 @@ def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, p
         receipt = {'status': 'running', 'started_at': stamp(), 'run': str(run),
                    'config_sha256': expected, 'collection': collection, 'steps': [],
                    'minimum_source_files': minimum_source_files,
+                   'qmd_command': command, 'qmd_executable': str(qmd.resolve()),
+                   'qmd_package': str(package_root.resolve()),
                    'limits': 'Source and chunk coverage are checked at the recorded observation, not guaranteed afterward. Retrieval relevance and factual accuracy are not certified. Repair markers require independent reconciliation; the runner does not clear them.'}
         save(run/'receipt.json', receipt)
         save(state/'last-run.json', receipt)
         stage = 'version'
         try:
             version_log = run/'version.log'
-            code = execute([str(qmd), '--version'], env, version_log, 30, lock.fileno())
+            code = execute(command + ['--version'], env, version_log, 30, lock.fileno())
             if code or not re.fullmatch(r'qmd 2\.0\.1(?: \([0-9a-f]{4,40}\))?', version_log.read_text().strip()):
                 raise RuntimeError('unsupported-qmd-version')
             stage = 'source-preflight'
@@ -167,7 +187,7 @@ def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, p
                 step = {'stage': stage, 'exit': None, 'log': str(log)}
                 receipt['steps'].append(step)
                 save(run/'receipt.json', receipt)
-                code = execute([str(qmd), stage], env, log, timeout, lock.fileno())
+                code = execute(command + [stage], env, log, timeout, lock.fileno())
                 step['exit'] = code
                 if code:
                     raise RuntimeError(stage+'-nonzero-exit')
@@ -181,10 +201,6 @@ def refresh(vault, config, expected, index, state, qmd, timeout=7200, *, node, p
             stage = 'verification'
             if config.read_bytes() != raw:
                 raise RuntimeError('configuration-changed-during-run')
-            with closing(sqlite3.connect(index.resolve().as_uri()+'?mode=ro', uri=True)) as db:
-                pending = db.execute('SELECT COUNT(DISTINCT d.hash) FROM documents d WHERE d.active=1 AND d.collection=? AND NOT EXISTS (SELECT 1 FROM content_vectors v WHERE v.hash=d.hash AND v.seq=0)', (collection,)).fetchone()[0]
-            if pending:
-                raise RuntimeError('first-vector-backlog-remains')
             log = run/'verification.log'
             errors = run/'verification-stderr.log'
             step = {'stage': stage, 'exit': None, 'log': str(log), 'stderr_log': str(errors)}
