@@ -91,6 +91,7 @@ Attendees go in frontmatter as a YAML list. Per [[double-entry-knowledge]] and [
 - **Plain strings** for attendees without notes — e.g., `"Pat Morgan"`
 - **Never fabricate wikilinks** to person notes that don't exist. Plain strings upgrade to wikilinks when the person note is later created.
 - **The operator** is an attendee only when the source or explicit operator confirmation establishes attendance. Owning or importing a recording is not attendance evidence. Do not add a self-wikilink when the vault has no operator self-note.
+- **Unconfirmed presence is not absence.** A person mentioned in a prior conversation, or without a recorded speaker turn, has unknown attendance unless the source resolves it. State an absence only when the source explicitly supports it; otherwise keep attendance unconfirmed in both metadata and prose.
 
 Don't include attendees in the body unless the frontmatter list is incomplete or needs annotation (e.g., legacy practice of listing them under `## Attendees` with role notes). For most meetings, frontmatter is sufficient.
 

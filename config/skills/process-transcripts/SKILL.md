@@ -56,7 +56,7 @@ Read the transcript's frontmatter. Verify:
 
 If `processed: true`, verify referenced outputs before skipping. Missing or contradictory completion evidence needs reconciliation, not a duplicate extraction.
 
-Separate people merely mentioned from attendees; preserve tentative commercial terms as proposals. An empty recording or voicemail receives an explicit no-content disposition with source provenance, not an invented meeting or commitment. Review relevant recorded learnings before processing.
+Separate confirmed attendees, people merely mentioned, and explicit absences. A missing speaker turn or a reference to a prior conversation establishes neither attendance nor absence. When the source does not resolve presence, say attendance is unconfirmed; do not turn that gap into “was not present.” Preserve tentative commercial terms as proposals. An empty recording or voicemail receives an explicit no-content disposition with source provenance, not an invented meeting or commitment. Review relevant recorded learnings before processing.
 
 Pre-load vault context that downstream phases need (do this BEFORE the Gemini call so the wikilink resolution work in Phase 3 is fast):
 - Glob `atlas/people/*.md` — list of person notes for wikilink resolution
