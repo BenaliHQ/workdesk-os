@@ -136,7 +136,7 @@ Frontmatter:
 - `author:` names the actual verified authoring agent/runtime. Include the operator as an attendee only when their presence is supported by the source; importing a recording does not establish attendance.
 - `sensitive: true` if Gemini flagged it (see [[../../objects/meeting]] § Confidentiality)
 - `attendees:` from `attendees_present[]` (wikilinks where they resolve, plain text otherwise)
-- `transcript:` wikilink to the intake source
+- `transcript:` a quoted wikilink string to the intake source, such as `transcript: "[[system/intake/source]]"`. Bare `[[source]]` is parsed by YAML as a nested list, not a link string. Parse generated frontmatter and check property types before final verification: `transcript` is a string and `attendees` is a list of strings. Link resolution alone does not validate these types.
 
 ### 6. Apply matching
 
@@ -172,7 +172,15 @@ The `[REVIEW]` flood-guard cap (≤7 per session) applies to `[REVIEW]` proposal
 
 Verify every required meeting, decision, substantive entity update and routed commitment exists, cites the source, and agrees with the source. Check the planned output list against the actual files; a missing required update keeps the run incomplete. No-content sources use an explicit disposition instead of an invented meeting.
 
-Run `bash config/scripts/check-wikilinks.sh --require-links <paths>` on every created/updated knowledge note. Run the checker separately without `--require-links` on the raw source. A plain-text source path is not a wikilink; a note with no outgoing wikilinks fails completion. Zero broken required references is necessary, but does not prove factual correctness. Review attendee attribution, ownership and uncertainty separately. Record source identity, output paths, verification result and any remaining work in a processing receipt in the existing session-log note (source ID/hash, output paths, verification, remaining work).
+Obtain the host-local Python path using `bash config/scripts/migrate.sh source-runtime` (runtime preparation is described in step 9). Run the read-only verification below on every created/updated knowledge note, repeating `--output` for each actual path:
+
+```bash
+"<runtime-python>" config/scripts/complete-transcript.py \
+  --vault "$PWD" --verify-outputs \
+  --output "atlas/meetings/<meeting>.md"
+```
+
+This checks declared YAML properties and required outgoing links, including when extraction stops before archival. It rejects duplicate property keys, a meeting transcript stored as a YAML list instead of a wikilink string, and invalid attendee property types. It preserves legacy notes without frontmatter and is not a complete object-schema validator. Run `bash config/scripts/check-wikilinks.sh <raw-source-path>` separately on the raw source. A plain-text source path is not a wikilink; a note with no outgoing wikilinks fails completion. Zero broken required references is necessary, but does not prove factual correctness. Review attendee attribution, ownership and uncertainty separately. Record source identity, output paths, verification result and any remaining work in a processing receipt in the existing session-log note (source ID/hash, output paths, verification, remaining work).
 
 ### 9. Mark complete, archive, and reconcile
 
@@ -192,11 +200,13 @@ Repeat `--output` for the actual downstream knowledge notes; omit the second exa
 
 Before skipping a source on retry, run `--vault "$PWD" --verify-receipt "<receipt-path>"` with the same helper. Changed source/output hashes or an incomplete receipt require reconciliation, not duplicate extraction. For an interrupted helper operation, `--vault "$PWD" --resume-receipt "<receipt-path>"` resumes only when the recorded source and outputs remain unchanged; it preserves the earlier receipt and recovery snapshots. A refusal means inspect both locations and preserve newer work. Do not restore old output notes just to make hashes match.
 
-Completion requires a successful helper receipt and current revalidation; `processed: true` or archive location alone is insufficient. If a command fails, report the actual failed stage and leave the overall run incomplete. The helper verifies file state and references, not factual accuracy or whether a no-content classification was justified.
+Completion requires a successful helper receipt and current revalidation; `processed: true` or archive location alone is insufficient. The completion and receipt-verification paths repeat the declared-property checks as well as link checks. If a command fails, report the actual failed stage and leave the overall run incomplete. The helper verifies file state, declared properties and references, not factual accuracy or whether a no-content classification was justified.
 
 ### 10. Log
 
-Hook fires `source-processed` and `object-created` events automatically. No manual log entry needed.
+Finish the existing session-log processing record with the source identity, actual authoring agent, output links, validated completion receipt path, and any remaining work. If processing stopped before completion, record that state without inventing a completion receipt. Preserve earlier attempts when adding a recovery result.
+
+Tool hooks may record some file operations, but coverage depends on the runtime and tool used; the Python completion command is not recognized by the current semantic event hook. An event row is supplementary observability, not proof that processing or this handoff record is complete.
 
 ## Failure fallback
 

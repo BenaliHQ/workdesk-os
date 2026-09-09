@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -49,6 +50,44 @@ class CompletionTests(unittest.TestCase):
         with self.assertRaises(subprocess.CalledProcessError): self.run_completion()
         self.assertEqual(self.source.read_bytes(), self.raw)
         self.assertFalse((self.root/'system/transcripts/S9.md').exists())
+
+    def test_quoted_meeting_properties_complete_and_revalidate(self):
+        self.output.write_text('---\ntype: meeting\ntranscript: "[[S9]]"\nattendees: ["Alex"]\n---\n# Meeting\nSource: [[S9]]\n')
+        receipt = self.run_completion()
+        self.assertTrue(completion.verify_receipt(self.root, receipt)['complete'])
+
+    def test_nested_transcript_property_blocks_archive(self):
+        self.output.write_text('---\ntype: meeting\ntranscript: [[S9]]\nattendees: [Alex]\n---\n# Meeting\nSource: [[S9]]\n')
+        with self.assertRaisesRegex(ValueError, 'quoted wikilink'):
+            self.run_completion()
+        self.assertEqual(self.source.read_bytes(), self.raw)
+        self.assertFalse((self.root/'system/transcripts/S9.md').exists())
+        record = json.loads(next(self.receipts.glob('*/receipt.json')).read_text())
+        self.assertFalse(record['complete'])
+
+    def test_invalid_attendee_type_blocks_archive(self):
+        self.output.write_text('---\ntranscript: "[[S9]]"\nattendees: Alex\n---\n# Meeting\nSource: [[S9]]\n')
+        with self.assertRaisesRegex(ValueError, 'attendees'):
+            self.run_completion()
+        self.assertEqual(self.source.read_bytes(), self.raw)
+
+    def test_duplicate_output_property_blocks_archive(self):
+        self.output.write_text('---\ntranscript: "[[S9]]"\ntranscript: "[[S9]]"\n---\n# Meeting\nSource: [[S9]]\n')
+        with self.assertRaisesRegex(ValueError, 'unique string keys'):
+            self.run_completion()
+        self.assertEqual(self.source.read_bytes(), self.raw)
+
+    def test_readonly_output_verification_cli(self):
+        self.output.write_text('---\ntranscript: "[[S9]]"\nattendees: [Alex]\n---\n# Meeting\nSource: [[S9]]\n')
+        before = {str(p.relative_to(self.root)):p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        command = [sys.executable, str(PRODUCT/'config/scripts/complete-transcript.py'), '--vault', str(self.root), '--verify-outputs', '--output', 'atlas/meetings/M9.md']
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(before, {str(p.relative_to(self.root)):p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
+        self.output.write_text(self.output.read_text().replace('"[[S9]]"', '[[S9]]'))
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.source.read_bytes(), self.raw)
 
     def test_archive_collision_preserves_both_files(self):
         target = self.root/'system/transcripts/S9.md'

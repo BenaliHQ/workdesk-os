@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -52,10 +53,50 @@ def parse_source(raw):
     return metadata, body
 
 
-def verify(root, outputs, source):
+def verify_output_properties(root, outputs):
+    """Check declared properties, preserving legacy notes without frontmatter.
+
+    This is not a complete object-schema or factual-accuracy validator.
+    """
+    import yaml
+    root = root.resolve()
+    for name in outputs:
+        path = safe_path(root, name)
+        if Path(name).parts[0] not in ('atlas', 'gtd', 'intel') or path.suffix != '.md':
+            raise ValueError('Expected a managed Markdown output')
+        text = path.read_text()
+        if not text.startswith('---\n'):
+            continue
+        if '\n---\n' not in text[4:]:
+            raise ValueError('Incomplete output frontmatter: ' + name)
+        header = text[4:].split('\n---\n', 1)[0]
+        node = yaml.compose(header)
+        if not isinstance(node, yaml.MappingNode):
+            raise ValueError('Output frontmatter must be a mapping: ' + name)
+        keys = [key.value for key, _ in node.value]
+        if any(not isinstance(key, yaml.ScalarNode) or key.tag != 'tag:yaml.org,2002:str'
+               for key, _ in node.value) or len(keys) != len(set(keys)):
+            raise ValueError('Output properties must have unique string keys: ' + name)
+        data = yaml.safe_load(header)
+        if Path(name).parts[:2] == ('atlas', 'meetings') or data.get('type') == 'meeting':
+            if 'transcript' in data and (not isinstance(data['transcript'], str) or
+                    re.fullmatch(r'\[\[[^\n]+\]\]', data['transcript']) is None):
+                raise ValueError('Meeting transcript must be a quoted wikilink string: ' + name)
+            if 'attendees' in data and (not isinstance(data['attendees'], list) or
+                    any(not isinstance(value, str) or not value.strip() for value in data['attendees'])):
+                raise ValueError('Meeting attendees must be a list of strings: ' + name)
+
+
+def verify_outputs(root, outputs):
+    verify_output_properties(root, outputs)
     checker = root / 'config/scripts/check-wikilinks.sh'
     if outputs:
         subprocess.run(['bash', str(checker), '--require-links', *outputs], cwd=root, check=True)
+
+
+def verify(root, outputs, source):
+    verify_outputs(root, outputs)
+    checker = root / 'config/scripts/check-wikilinks.sh'
     subprocess.run(['bash', str(checker), str(source)], cwd=root, check=True)
 
 
@@ -268,9 +309,15 @@ if __name__ == '__main__':
     parser.add_argument('--disposition', choices=['processed', 'no-content'], default='processed')
     parser.add_argument('--reason', help='Reviewed source-grounded reason for a no-content disposition')
     parser.add_argument('--verify-receipt', type=Path, help='Read-only revalidation of an existing completion')
+    parser.add_argument('--verify-outputs', action='store_true', help='Read-only declared-property and link checks for --output notes')
     parser.add_argument('--resume-receipt', type=Path, help='Recover an interrupted transition with unchanged source/output hashes')
     args = parser.parse_args()
-    if args.resume_receipt:
+    if args.verify_outputs:
+        if not args.output or args.source or args.receipts or args.verify_receipt or args.resume_receipt or args.reason or args.disposition != 'processed':
+            parser.error('Output verification requires --output and cannot be combined with completion arguments')
+        verify_outputs(args.vault.resolve(), args.output)
+        print('Declared output properties and links verified; factual review remains separate.')
+    elif args.resume_receipt:
         if args.verify_receipt or args.source or args.output or args.receipts or args.reason or args.disposition != 'processed':
             parser.error('Recovery cannot be combined with other completion arguments')
         print(resume(args.vault, args.resume_receipt))
