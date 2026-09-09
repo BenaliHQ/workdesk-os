@@ -3,6 +3,7 @@
 import argparse
 import datetime as dt
 import json
+import math
 from pathlib import Path
 import shutil
 import subprocess
@@ -22,6 +23,32 @@ def backup_status(pending, commit_age, push_pending_age, marker_known, head_push
     elif not head_pushed and push_pending_age > 7200:
         issues.append("unpushed-commit-older-than-2h")
     return issues
+
+
+def plugin_status(plugin, data):
+    try:
+        plugins = json.loads(plugin.read_text())
+        settings = json.loads(data.read_text())
+        if not isinstance(plugins, list) or any(not isinstance(x, str) for x in plugins) or not isinstance(settings, dict):
+            raise ValueError('Invalid backup settings structure')
+        cadence = settings.get('autoSaveInterval')
+        pull_interval = settings.get('autoPullInterval', 0)
+        pull_boot = settings.get('autoPullOnBoot', False)
+        for value in (cadence, pull_interval):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+                raise ValueError('Invalid backup interval')
+        if not isinstance(pull_boot, bool):
+            raise ValueError('Invalid pull setting')
+        enabled = 'obsidian-git' in plugins
+        automatic = enabled and cadence > 0
+        auto_pull = pull_boot or pull_interval > 0
+        issues = []
+        if not enabled: issues.append('automatic-commit-plugin-disabled')
+        elif not automatic: issues.append('automatic-commit-interval-disabled')
+        if auto_pull: issues.append('automatic-pull-enabled')
+        return enabled, automatic, auto_pull, cadence, issues
+    except (OSError, ValueError, TypeError):
+        return None, None, None, None, ['backup-plugin-state-unavailable']
 
 
 def inspect(vault):
@@ -46,16 +73,8 @@ def inspect(vault):
     issues = backup_status(bool(pending), commit_age, age, bool(pushed), head == pushed)
     plugin = vault / '.obsidian/community-plugins.json'
     data = vault / '.obsidian/plugins/obsidian-git/data.json'
-    try:
-        enabled = 'obsidian-git' in json.loads(plugin.read_text())
-        settings = json.loads(data.read_text())
-        auto_pull = bool(settings.get('autoPullOnBoot') or settings.get('autoPullInterval', 0))
-        cadence = settings.get('autoSaveInterval')
-        if not enabled: issues.append('automatic-commit-plugin-disabled')
-        if auto_pull: issues.append('automatic-pull-enabled')
-    except (OSError, ValueError, TypeError):
-        enabled = auto_pull = cadence = None
-        issues.append('backup-plugin-state-unavailable')
+    enabled, automatic, auto_pull, cadence, plugin_issues = plugin_status(plugin, data)
+    issues.extend(plugin_issues)
     if pending is None: issues.append('working-tree-unavailable')
     if not (Path.home()/'.claude/hooks/verify-send-phrase.py').is_file(): issues.append('email-verifier-missing')
     if not (Path.home()/'.claude/email-send-phrase').is_file(): issues.append('email-phrase-not-provisioned')
@@ -67,7 +86,7 @@ def inspect(vault):
         'exceptions': issues,
         'backup': {'commit_age_seconds': commit_age, 'pending_change_count': len(pending.splitlines()) if pending is not None else None,
                    'head_matches_local_push_receipt': bool(head and pushed and head == pushed), 'oldest_unpushed_age_seconds': age,
-                   'automatic_commits_enabled': enabled, 'commit_interval_minutes': cadence, 'automatic_pull_enabled': auto_pull},
+                   'automatic_commit_plugin_enabled': enabled, 'automatic_commits_enabled': automatic, 'commit_interval_minutes': cadence, 'automatic_pull_enabled': auto_pull},
         'tools_on_this_path': {name: bool(shutil.which(name)) for name in ['claude','codex','gws','qbo','qmd','ntn','keep-markdown','infisical']},
         'safety': {'codex_wiring_present': (vault/'.codex/hooks.json').is_file(),
                    'verifier_present': (Path.home()/'.claude/hooks/verify-send-phrase.py').is_file(),

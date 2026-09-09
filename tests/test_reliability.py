@@ -66,6 +66,31 @@ class CopyTests(unittest.TestCase):
    with self.assertRaises(c.ChangedTarget):c.checked_copy(src,dst,None)
 
 class HealthTests(unittest.TestCase):
+ def test_backup_plugin_states_are_distinguished(self):
+  spec=importlib.util.spec_from_file_location('health',W/'config/scripts/workdesk-health.py');h=importlib.util.module_from_spec(spec);spec.loader.exec_module(h)
+  with tempfile.TemporaryDirectory() as t:
+   root=Path(t);plugin=root/'plugins.json';data=root/'data.json'
+   cases=[
+    (['obsidian-git'],{'autoSaveInterval':10},(True,True,False,10,[])),
+    (['obsidian-git'],{'autoSaveInterval':0},(True,False,False,0,['automatic-commit-interval-disabled'])),
+    ([],{'autoSaveInterval':10},(False,False,False,10,['automatic-commit-plugin-disabled'])),
+    (['obsidian-git'],{'autoSaveInterval':10,'autoPullOnBoot':True},(True,True,True,10,['automatic-pull-enabled'])),
+   ]
+   for plugins,settings,expected in cases:
+    with self.subTest(settings=settings,plugins=plugins):
+     plugin.write_text(json.dumps(plugins));data.write_text(json.dumps(settings))
+     self.assertEqual(h.plugin_status(plugin,data),expected)
+ def test_invalid_backup_settings_report_unknown_without_crashing(self):
+  spec=importlib.util.spec_from_file_location('health',W/'config/scripts/workdesk-health.py');h=importlib.util.module_from_spec(spec);spec.loader.exec_module(h)
+  with tempfile.TemporaryDirectory() as t:
+   root=Path(t);plugin=root/'plugins.json';data=root/'data.json'
+   cases=[([],[]),({},{}),(['obsidian-git'],{}),(['obsidian-git'],{'autoSaveInterval':'10'}),(['obsidian-git'],{'autoSaveInterval':True}),(['obsidian-git'],{'autoSaveInterval':-1}),(['obsidian-git'],{'autoSaveInterval':float('nan')}),(['obsidian-git'],{'autoSaveInterval':10,'autoPullOnBoot':'false'})]
+   for plugins,settings in cases:
+    with self.subTest(settings=settings,plugins=plugins):
+     plugin.write_text(json.dumps(plugins));data.write_text(json.dumps(settings))
+     self.assertEqual(h.plugin_status(plugin,data),(None,None,None,None,['backup-plugin-state-unavailable']))
+   data.write_text('{broken')
+   self.assertEqual(h.plugin_status(plugin,data)[-1],['backup-plugin-state-unavailable'])
  def test_pending_commit_and_push_thresholds(self):
   spec=importlib.util.spec_from_file_location('health',W/'config/scripts/workdesk-health.py');h=importlib.util.module_from_spec(spec);spec.loader.exec_module(h)
   self.assertEqual(len(h.backup_status(True,1900,7300,True,False)),2)
