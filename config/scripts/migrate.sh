@@ -441,7 +441,50 @@ cmd_restore() {
 
 # ---- dispatch -----------------------------------------------------------------
 
+cmd_source_runtime() {
+  [[ $# -le 1 && ( $# -eq 0 || "$1" == "--apply" ) ]] || fail "source-runtime accepts only --apply"
+  require python3
+  python3 - "${1:-}" <<'PYRUNTIME'
+import json, os, platform, subprocess, sys
+from pathlib import Path
+
+apply = sys.argv[1] == '--apply'
+version = '6.0.3'
+base = Path.home() / '.local/share/workdesk/runtimes'
+target = base / ('source-processing-py' + str(sys.version_info.major) + '.' + str(sys.version_info.minor) + '-yaml' + version)
+for path in [target, *target.parents]:
+    if path.is_symlink():
+        raise SystemExit('Runtime path contains a symlink; reconcile before installation')
+python = target / 'bin/python3'
+receipt = target / 'workdesk-runtime.json'
+status = 'create'
+if target.exists():
+    if not python.is_file() or not receipt.is_file():
+        raise SystemExit('Existing runtime is incomplete; preserve it and reconcile before retrying')
+    saved = json.loads(receipt.read_text())
+    probe = subprocess.run([str(python), '-c', 'import yaml; print(yaml.__version__)'], capture_output=True, text=True)
+    if probe.returncode or probe.stdout.strip() != version or saved.get('package') != 'PyYAML==' + version:
+        raise SystemExit('Existing runtime does not match its required dependency; reconcile without overwriting')
+    status = 'ready'
+plan = {'status': status, 'python': str(python), 'package': 'PyYAML==' + version,
+        'scope': 'host-local isolated runtime; no vault or global agent config changes'}
+if apply and status == 'create':
+    base.mkdir(parents=True, exist_ok=True)
+    target.mkdir(mode=0o700)
+    subprocess.run([str(Path(sys.executable).resolve()), '-m', 'venv', '--symlinks', str(target)], check=True)
+    subprocess.run([str(python), '-m', 'pip', '--isolated', 'install', '--disable-pip-version-check',
+                    '--no-cache-dir', '--only-binary=:all:', 'PyYAML==' + version], check=True)
+    subprocess.run([str(python), '-c', 'import yaml; assert yaml.__version__ == "6.0.3"'], check=True)
+    saved = dict(plan, status='ready', base_python=sys.version, platform=platform.platform())
+    receipt.write_text(json.dumps(saved, indent=2) + '\n')
+    os.chmod(receipt, 0o600)
+    plan['status'] = 'ready'
+print(json.dumps(plan))
+PYRUNTIME
+}
+
 case "${1:-}" in
+  source-runtime) shift; cmd_source_runtime "$@" ;;
   private-overlay) shift; python3 "$(dirname "${BASH_SOURCE[0]}")/apply-private-config.py" --vault "$VAULT" "$@" ;;
   check)   shift; cmd_check   "$@" ;;
   apply)   shift; cmd_apply   "$@" ;;
@@ -451,6 +494,10 @@ case "${1:-}" in
 migrate.sh — WorkDesk OS update engine.
 
 Usage:
+  migrate.sh source-runtime [--apply]
+      Review or prepare the isolated host-local Python runtime for source completion.
+      Existing mismatched or partial environments are preserved for reconciliation.
+
   migrate.sh check
       Fetch latest release, verify SHA256, extract to staging, output plan JSON.
 

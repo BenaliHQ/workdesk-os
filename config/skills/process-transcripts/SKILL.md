@@ -176,9 +176,23 @@ Run `bash config/scripts/check-wikilinks.sh --require-links <paths>` on every cr
 
 ### 9. Mark complete, archive, and reconcile
 
-Only after step 8 succeeds, set `processed: true` and populate `processed-into:` with the verified outputs. A no-content source must retain its explicit disposition and verification evidence even when it has no meeting output. Move an intake source to `system/transcripts/` without replacing an existing file; an existing destination is a reconciliation case, not permission to overwrite.
+Use `config/scripts/complete-transcript.py` for this transition after the factual review in step 8. Do not independently set processing flags or move the source: the helper checks links before archiving, refuses an existing archive destination, checks again after the move, and records source/output hashes plus the actual transition order. Its receipts and original source snapshots live in the existing `system/session-log/` directory. Establish one active processing writer before invoking it; it does not provide a cross-host lock.
 
-Verify the final source location and its output links after the move. A failed move or final check leaves the overall run incomplete. On retry, inspect both locations and that processing receipt, reuse verified outputs, and do only missing work. Never infer completion from an archive location alone or create a second commitment for the same source item.
+Read `bash config/scripts/migrate.sh source-runtime` to obtain the host-local Python path and readiness. If missing, prepare it with `bash config/scripts/migrate.sh source-runtime --apply` when runtime installation is authorized. This installs pinned dependencies in an isolated environment, without replacing global Python packages. Use the returned `python` path for the commands below; do not silently fall back to a Python missing the required dependency.
+
+```bash
+"<runtime-python>" config/scripts/complete-transcript.py \
+  --vault "$PWD" --source "system/intake/<source>.md" \
+  --output "atlas/meetings/<meeting>.md" \
+  --output "<other-created-or-updated-knowledge-note>.md" \
+  --receipts "$PWD/system/session-log"
+```
+
+Repeat `--output` for the actual downstream knowledge notes; omit the second example argument if there are no additional notes. Record the returned receipt path in the session log. A no-content recording uses `--disposition no-content --reason "<source-grounded reason>"` with no `--output`; it still preserves the source and creates a completion receipt.
+
+Before skipping a source on retry, run `--vault "$PWD" --verify-receipt "<receipt-path>"` with the same helper. Changed source/output hashes or an incomplete receipt require reconciliation, not duplicate extraction. For an interrupted helper operation, `--vault "$PWD" --resume-receipt "<receipt-path>"` resumes only when the recorded source and outputs remain unchanged; it preserves the earlier receipt and recovery snapshots. A refusal means inspect both locations and preserve newer work. Do not restore old output notes just to make hashes match.
+
+Completion requires a successful helper receipt and current revalidation; `processed: true` or archive location alone is insufficient. If a command fails, report the actual failed stage and leave the overall run incomplete. The helper verifies file state and references, not factual accuracy or whether a no-content classification was justified.
 
 ### 10. Log
 
